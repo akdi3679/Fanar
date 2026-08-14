@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+@theme {
+  --font-apple: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+html, body {
+  margin: 0; padding: 0;
+  height: 100vh;
+  overflow: hidden;
+  background: #00001f;
+  font-family: var(--font-apple);
+  color: #fff;
+}
+
+/* Masquer scrollbar partout au cas où */
+::-webkit-scrollbar { display: none; }
+html { scrollbar-width: none; -ms-overflow-style: none; }
+
+::selection { background: #0000d1; color: #fff; }
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(1rem); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeInSlow { from { opacity: 0; } to { opacity: 1; } }
+
+.fade-in { opacity: 0; animation: fadeIn 1.2s cubic-bezier(.22,.61,.21,1) forwards; }
+.fade-in-slow { opacity: 0; animation: fadeInSlow 2s ease-out 0.3s forwards; }
+
+.silk-canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 0; pointer-events: none; }
+.content-layer { position: relative; z-index: 10; height: 100vh; }
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.marquee { overflow: hidden; }
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 35s linear infinite;
+}
+.marquee:hover .marquee-track { animation-play-state: paused; }
+/* Favicon custom favicon si tu mets ton .ico dans /public */
