@@ -3,8 +3,7 @@ import { useEffect, useRef } from 'react';
 
 export default function SilkBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationRef = useRef<number>();
-
+const animationRef = useRef<number | null>(null);
   useEffect(() => {
     const canvas = canvasRef.current; if (!canvas) return;
     const ctx = canvas.getContext('2d'); if (!ctx) return;
