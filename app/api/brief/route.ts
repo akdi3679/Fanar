@@ -14,15 +14,21 @@ const BriefSchema = z.object({
   budget: z.string().optional(),
   timeline: z.string().optional(),
   language: z.string().default('fr'),
-  questionnaire: z.any().optional(), // Save questionnaire answers
+  questionnaire: z.any().optional(),
 });
 
 export async function POST(req: NextRequest) {
+  if (!db) {
+    return NextResponse.json(
+      { error: 'Database not configured' },
+      { status: 503 }
+    );
+  }
+
   try {
     const body = await req.json();
     const validated = BriefSchema.parse(body);
 
-    // Extract visitor context from headers
     const userAgent = req.headers.get('user-agent') || '';
     const ipAddress = req.headers.get('x-forwarded-for')?.split(',')[0] || 
                       req.headers.get('x-real-ip') || 
@@ -30,7 +36,6 @@ export async function POST(req: NextRequest) {
     const country = req.headers.get('x-vercel-ip-country') || 'Unknown';
     const city = req.headers.get('x-vercel-ip-city') || 'Unknown';
 
-    // Parse user agent for device info
     const deviceType = /Mobile|Android|iPhone/i.test(userAgent) ? 'mobile' : 
                        /Tablet|iPad/i.test(userAgent) ? 'tablet' : 'desktop';
     const browserMatch = userAgent.match(/(Chrome|Firefox|Safari|Edge|Opera|Iron)\/(\d+)/);
@@ -38,7 +43,6 @@ export async function POST(req: NextRequest) {
     const osMatch = userAgent.match(/(Windows|Mac|Linux|Android|iOS) ([^;)]+)/);
     const osName = osMatch?.[1] || 'Unknown';
 
-    // Save to database WITH QUESTIONNAIRE
     await db.insert(briefs).values({
       ...validated,
       questionnaire: validated.questionnaire || null,
@@ -58,7 +62,7 @@ export async function POST(req: NextRequest) {
     console.error('Brief submission error:', error);
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: 'Validation failed', details: error.errors },
+        { error: 'Validation failed', details: error.issues },
         { status: 400 }
       );
     }
