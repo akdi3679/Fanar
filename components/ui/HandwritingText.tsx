@@ -4,8 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 const OPENTYPE_CDN = "https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js";
-// Reliable CORS-enabled handwriting font (Kalam, Google Fonts via jsDelivr)
-const DEFAULT_FONT_URL = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/kalam/Kalam-Regular.ttf";
+const DEFAULT_FONT_URL =
+  "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/kalam/Kalam-Regular.ttf";
+
+// Scripts the handwriting font cannot render -> graceful fade-in fallback
+const FALLBACK_SCRIPT = /[\u0600-\u06FF\u0590-\u05FF\u0700-\u074F\u3040-\u30FF\u4E00-\u9FFF\uAC00-\uD7AF]/;
 
 export interface HandwritingTextProps {
   text?: string;
@@ -50,7 +53,7 @@ function loadFont(url: string): Promise<any> {
     pending = Promise.all([
       loadOpentype(),
       fetch(url).then((res) => {
-        if (!res.ok) throw new Error(`Font failed: ${res.status}`);
+        if (!res.ok) throw new Error("Font failed: " + res.status);
         return res.arrayBuffer();
       }),
     ]).then(([lib, buffer]) => lib.parse(buffer));
@@ -62,20 +65,24 @@ function loadFont(url: string): Promise<any> {
 const EM = 100;
 
 export function HandwritingText({
-  text,
-  words,
-  interval = 3200,
-  fontUrl = DEFAULT_FONT_URL,
-  duration = 1.5,
-  delay = 0.05,
-  strokeWidth = 1.6,
-  fill = true,
-  height = "1.15em",
-  className,
+  text, words, interval = 3200, fontUrl = DEFAULT_FONT_URL,
+  duration = 1.5, delay = 0.05, strokeWidth = 1.6, fill = true,
+  height = "1.15em", className,
 }: HandwritingTextProps) {
   const cycle = Boolean(words && words.length > 0);
   const [index, setIndex] = useState(0);
   const current = cycle ? words![index % words!.length] : text ?? "";
+
+  // Arabic / other non-Latin scripts: the handwriting font has no glyphs for them,
+  // so fall back to a smooth fade-in of the plain text.
+  const needsFallback = FALLBACK_SCRIPT.test(current);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    if (needsFallback) {
+      const t = setTimeout(() => setVisible(true), 60);
+      return () => clearTimeout(t);
+    }
+  }, [needsFallback, current]);
 
   const [font, setFont] = useState<any>(null);
   const [geom, setGeom] = useState<Geometry | null>(null);
@@ -90,15 +97,16 @@ export function HandwritingText({
   }, [cycle, interval]);
 
   useEffect(() => {
+    if (needsFallback) return;
     let cancelled = false;
     loadFont(fontUrl)
       .then((f) => { if (!cancelled) setFont(f); })
-      .catch(() => { /* fallback to styled span below */ });
+      .catch(() => {});
     return () => { cancelled = true; };
-  }, [fontUrl]);
+  }, [fontUrl, needsFallback]);
 
   useEffect(() => {
-    if (!font || !current) return;
+    if (!font || !current || needsFallback) return;
     try {
       const path = font.getPath(current, 0, EM, EM);
       const box = path.getBoundingBox();
@@ -112,8 +120,8 @@ export function HandwritingText({
       });
       setDrawn(false);
       setLengths([]);
-    } catch { /* fallback */ }
-  }, [font, current]);
+    } catch { /* fallback below */ }
+  }, [font, current, needsFallback]);
 
   useEffect(() => {
     if (!geom) return undefined;
@@ -122,10 +130,17 @@ export function HandwritingText({
     return () => cancelAnimationFrame(id);
   }, [geom]);
 
-  // Fallback: still looks handwritten even if the font/animation fails
-  if (!geom) {
+  // FALLBACK for Arabic & other scripts: simple fade-in, always readable
+  if (needsFallback || !geom) {
     return (
-      <span className={cn(className)} style={{ fontFamily: "'Segoe Script','Bradley Hand','Comic Sans MS',cursive" }}>
+      <span
+        className={cn("inline-block", className)}
+        style={{
+          opacity: needsFallback ? (visible ? 1 : 0) : 1,
+          transform: needsFallback ? (visible ? "translateY(0)" : "translateY(8px)") : "none",
+          transition: "opacity 0.7s ease, transform 0.7s ease",
+        }}
+      >
         {current}
       </span>
     );

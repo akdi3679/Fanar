@@ -1,81 +1,49 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 
 export function VisitorTracker() {
+  const pathname = usePathname();
+
+  // Ensure a session id exists
   useEffect(() => {
-    const sessionId = sessionStorage.getItem("visitor_session_id");
-    if (!sessionId) {
-      const newSessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      sessionStorage.setItem("visitor_session_id", newSessionId);
+    if (typeof window === "undefined") return;
+    let sid = sessionStorage.getItem("visitor_session_id");
+    if (!sid) {
+      sid = "sess_" + Date.now() + "_" + Math.random().toString(36).slice(2, 9);
+      sessionStorage.setItem("visitor_session_id", sid);
     }
-
-    const startTime = Date.now();
-    let scrollDepth = 0;
-
-    const trackScroll = () => {
-      const scrollTop = window.scrollY;
-      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
-      scrollDepth = Math.round((scrollTop / docHeight) * 100);
-    };
-
-    window.addEventListener("scroll", trackScroll);
-
-    const trackPageView = async () => {
-      try {
-        await fetch("/api/track", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: sessionStorage.getItem("visitor_session_id"),
-            page: window.location.pathname,
-            referrer: document.referrer,
-            timeOnPage: 0,
-            scrollDepth,
-            screenWidth: window.screen.width,
-            screenHeight: window.screen.height,
-            screenColorDepth: window.screen.colorDepth,
-            language: navigator.language,
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-            isFirstVisit: !sessionStorage.getItem("has_visited_before"),
-          }),
-        });
-        
-        if (!sessionStorage.getItem("has_visited_before")) {
-          sessionStorage.setItem("has_visited_before", "true");
-        }
-      } catch (error) {
-        console.error("Failed to track page view:", error);
-      }
-    };
-
-    trackPageView();
-
-    const trackTimeOnPage = async () => {
-      const timeOnPage = Math.round((Date.now() - startTime) / 1000);
-      try {
-        await fetch("/api/track", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: sessionStorage.getItem("visitor_session_id"),
-            page: window.location.pathname,
-            timeOnPage,
-            scrollDepth,
-          }),
-        });
-      } catch (error) {
-        console.error("Failed to track time on page:", error);
-      }
-    };
-
-    window.addEventListener("beforeunload", trackTimeOnPage);
-
-    return () => {
-      window.removeEventListener("scroll", trackScroll);
-      window.removeEventListener("beforeunload", trackTimeOnPage);
-    };
   }, []);
+
+  // Track on every pathname change (initial load + client-side navigation)
+  useEffect(() => {
+    if (typeof window === "undefined" || !pathname) return;
+    const sessionId = sessionStorage.getItem("visitor_session_id") || "anonymous";
+    const isFirst = !sessionStorage.getItem("has_visited");
+
+    const payload = {
+      sessionId,
+      page: pathname,
+      referrer: document.referrer || null,
+      timeOnPage: 0,
+      scrollDepth: 0,
+      screenWidth: window.screen.width,
+      screenHeight: window.screen.height,
+      screenColorDepth: window.screen.colorDepth,
+      language: navigator.language,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      isFirstVisit: isFirst,
+    };
+
+    fetch("/api/track", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).catch(() => {});
+
+    sessionStorage.setItem("has_visited", "true");
+  }, [pathname]);
 
   return null;
 }

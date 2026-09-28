@@ -11,8 +11,11 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-100">
       <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-        <Link href="/" className="text-lg font-bold text-slate-900">
-          Fanar<span className="text-blue-600">.</span>
+        {/* Logo forced LTR so it never flips in Arabic */}
+        <Link href="/">
+          <span dir="ltr" className="text-lg font-bold text-slate-900">
+            Fanar<span className="text-blue-600">.</span>
+          </span>
         </Link>
 
         <nav className="hidden md:flex items-center gap-7 text-sm text-slate-600">
@@ -23,8 +26,12 @@ export default function Header() {
 
         <div className="flex items-center gap-3">
           <LanguageSwitcher />
-          <Link href="/contact" className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors">
-            {t("contact")} <ArrowRight className="w-4 h-4" />
+          <Link
+            href="/contact"
+            className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+          >
+            {t("contact")}
+            <ArrowRight className="w-4 h-4 rtl:rotate-180" />
           </Link>
         </div>
       </div>
