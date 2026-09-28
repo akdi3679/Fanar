@@ -25,6 +25,7 @@ export const briefs = pgTable('briefs', {
   osName: text('os_name'),
   screenWidth: integer('screen_width'),
   screenHeight: integer('screen_height'),
+  audioUrl: text('audio_url'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -53,6 +54,7 @@ export const visitors = pgTable('visitors', {
   isFirstVisit: boolean('is_first_visit').default(false),
   visitCount: integer('visit_count').default(1),
   metadata: json('metadata'),
+  audioUrl: text('audio_url'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -65,5 +67,6 @@ export const pageViews = pgTable('page_views', {
   referrer: text('referrer'),
   timeOnPage: integer('time_on_page'),
   scrollDepth: integer('scroll_depth'),
+  audioUrl: text('audio_url'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
