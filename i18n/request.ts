@@ -3,9 +3,14 @@ import { routing } from "./routing";
 
 export default getRequestConfig(async ({ requestLocale }) => {
   const requested = await requestLocale;
-  const locale = routing.locales.includes(requested as any)
-    ? requested
-    : routing.defaultLocale;
+
+  // Widen to readonly string[] so .includes() accepts a plain string,
+  // and `requested &&` narrows out undefined → locale is always a string.
+  const locales: readonly string[] = routing.locales;
+  const locale =
+    requested && locales.includes(requested)
+      ? requested
+      : routing.defaultLocale;
 
   return {
     locale,
