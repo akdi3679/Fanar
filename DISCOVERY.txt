@@ -1,0 +1,528 @@
+PROJECT DISCOVERY — 09/26/2026 22:11:03
+ROOT: C:\Users\user\Desktop\fanar
+
+===== TREE =====
++-- app/
+¦   +-- globals.css
+¦   +-- layout.tsx
+¦   +-- page.tsx
++-- components/
+¦   +-- Footer.tsx
+¦   +-- Header.tsx
+¦   +-- ServiceLine.tsx
+¦   +-- SilkBackground.tsx
+¦   +-- SocialIcons.tsx
++-- public/
+¦   +-- .gitkeep
+¦   +-- favicon.png
++-- .gitignore
++-- DISCOVERY.txt
++-- next.config.mjs
++-- next-env.d.ts
++-- package.json
++-- package-lock.json
++-- postcss.config.mjs
++-- tsconfig.json
++-- vercel.json
+
+===== GIT =====
+Branch: main
+df1aaf3 Fix useRef for React 19
+6a9491a Fanar studio ÔÇö single screen landing page
+Remote:
+origin	https://github.com/akdi3679/Fanar.git (fetch)
+origin	https://github.com/akdi3679/Fanar.git (push)
+Uncommitted: 1 files
+
+===== VERCEL =====
+By extension:
+  .tsx     7
+  .json    4
+  .mjs     2
+  .css     1
+  .ts      1
+Source files: 15  |  Total lines: 2038
+
+===== package.json =====
+{
+  "name": "fanar-studio",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "lucide-react": "^1.31.0",
+    "next": "^16.3.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.0",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tailwindcss": "^4.1.0",
+    "typescript": "^5.7.2"
+  }
+}
+
+
+===== tsconfig.json =====
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}
+
+
+===== vercel.json =====
+{
+  "framework": "nextjs"
+}
+
+
+========== FULL SOURCE ==========
+
+
+----- app\globals.css -----
+@import "tailwindcss";
+
+@theme {
+  --font-apple: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+html, body {
+  margin: 0; padding: 0;
+  height: 100vh;
+  overflow: hidden;
+  background: #00001f;
+  font-family: var(--font-apple);
+  color: #fff;
+}
+
+/* Masquer scrollbar partout au cas oÃ¹ */
+::-webkit-scrollbar { display: none; }
+html { scrollbar-width: none; -ms-overflow-style: none; }
+
+::selection { background: #0000d1; color: #fff; }
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(1rem); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeInSlow { from { opacity: 0; } to { opacity: 1; } }
+
+.fade-in { opacity: 0; animation: fadeIn 1.2s cubic-bezier(.22,.61,.21,1) forwards; }
+.fade-in-slow { opacity: 0; animation: fadeInSlow 2s ease-out 0.3s forwards; }
+
+.silk-canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 0; pointer-events: none; }
+.content-layer { position: relative; z-index: 10; height: 100vh; }
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.marquee { overflow: hidden; }
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 35s linear infinite;
+}
+.marquee:hover .marquee-track { animation-play-state: paused; }
+/* Favicon custom favicon si tu mets ton .ico dans /public */
+
+
+----- app\layout.tsx -----
+import type { Metadata } from 'next';
+import './globals.css';
+
+export const metadata: Metadata = {
+  title: 'Fanar â€” studio web',
+  description: 'Fanar studio web â€” sites, applications, e-commerce, identitÃ© visuelle.',
+  icons: { icon: '/favicon.ico' },
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="fr">
+      <head>
+        <link rel="icon" href="/favicon.png" sizes="any" />
+      </head>
+      <body>{children}</body>
+    </html>
+  );
+}
+
+
+----- app\page.tsx -----
+import SilkBackground from '@/components/SilkBackground';
+import Header from '@/components/Header';
+import Footer from '@/components/Footer';
+import ServiceLine from '@/components/ServiceLine';
+
+export default function Page() {
+  return (
+    <>
+      <SilkBackground />
+      <Header />
+
+      <main className="content-layer flex flex-col items-center justify-center px-6">
+        {/* Nom FANAR en blanc */}
+        <h1
+          className="fade-in text-white text-center font-light tracking-[-0.04em] leading-none select-none"
+          style={{
+            fontSize: 'clamp(5rem, 20vw, 18rem)',
+            textShadow: '0 0 80px rgba(255,255,255,0.08)',
+          }}
+        >
+          Fanar
+        </h1>
+
+        <p className="fade-in-slow mt-3 text-center text-white/60 text-sm md:text-base font-light tracking-[0.3em] uppercase">
+          le phare Â· studio web
+        </p>
+
+        {/* Une seule ligne de services avec icÃ´nes */}
+        <div className="fade-in-slow mt-12 md:mt-16 w-full">
+          <ServiceLine />
+        </div>
+      </main>
+      <Footer />
+    </>
+  );
+}
+
+
+----- components\Footer.tsx -----
+import { Mail } from 'lucide-react';
+import { InstagramIcon } from './SocialIcons';
+
+export default function Footer() {
+  return (
+    <footer className="absolute bottom-0 inset-x-0 z-50 px-6 py-5 md:px-10 md:py-7 flex items-center justify-between">
+      <a
+        href="https://www.instagram.com/fanar.studio/"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-2 text-white/60 hover:text-white transition-colors"
+      >
+        <InstagramIcon className="w-4 h-4" />
+        <span className="text-xs font-light tracking-wider hidden sm:inline">@fanar.studio</span>
+      </a>
+      <p className="text-[10px] md:text-xs text-white/40 tracking-[0.2em] uppercase font-light">
+        Fanar â€” le phare
+      </p>
+      <a
+        href="mailto:fanar.link@gmail.com"
+        className="flex items-center gap-2 text-white/60 hover:text-white transition-colors"
+      >
+        <Mail className="w-4 h-4" strokeWidth={1.5} />
+        <span className="text-xs font-light tracking-wider hidden sm:inline">Contact</span>
+      </a>
+    </footer>
+  );
+}
+
+
+----- components\Header.tsx -----
+export default function Header() {
+  return (
+    <header className="absolute top-0 inset-x-0 z-50 px-6 py-5 md:px-10 md:py-7 flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-medium tracking-[0.28em] uppercase text-white/70">Fanar</span>
+        <span className="text-[10px] text-white/40 tracking-wider">Â· studio web</span>
+      </div>
+      <a
+        href="mailto:fanar.link@gmail.com"
+        className="text-xs md:text-sm font-light text-white/70 hover:text-white transition-colors"
+      >
+        fanar.link@gmail.com
+      </a>
+    </header>
+  );
+}
+
+
+----- components\ServiceLine.tsx -----
+import {
+  Globe, Code2, ShoppingCart, Layout, Database, Palette, Search, Wrench
+} from 'lucide-react';
+
+const services = [
+  { icon: Globe, label: 'Sites vitrine' },
+  { icon: Code2, label: 'Apps web' },
+  { icon: ShoppingCart, label: 'E-commerce' },
+  { icon: Layout, label: 'Landing pages' },
+  { icon: Database, label: 'CMS' },
+  { icon: Palette, label: 'UI/UX' },
+  { icon: Search, label: 'SEO' },
+  { icon: Wrench, label: 'Maintenance' },
+];
+
+function ServiceItem({ icon: Icon, label }: { icon: any; label: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 px-6 md:px-10 flex-shrink-0 w-[110px] md:w-[140px]">
+      <Icon className="w-5 h-5 md:w-6 md:h-6" strokeWidth={1.5} />
+      <span className="text-[10px] md:text-xs font-light tracking-[0.15em] uppercase text-center whitespace-nowrap">{label}</span>
+    </div>
+  );
+}
+
+export default function ServiceLine() {
+  const set = services.concat(services); // dupliquÃ© pour boucle seamless
+  return (
+    <div className="marquee overflow-hidden py-2">
+      <div className="marquee-track text-white/80">
+        {set.map((s, i) => <ServiceItem key={i} icon={s.icon} label={s.label} />)}
+      </div>
+    </div>
+  );
+}
+
+
+----- components\SilkBackground.tsx -----
+"use client";
+import { useEffect, useRef } from 'react';
+
+export default function SilkBackground() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+const animationRef = useRef<number | null>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current; if (!canvas) return;
+    const ctx = canvas.getContext('2d'); if (!ctx) return;
+
+    let time = 0;
+    const speed = 0.015;          // vitesse d'origine
+    const scale = 1.6;            // â† plus large que l'original (2) mais moins que 1.1
+    const noiseIntensity = 0.6;   // â† attÃ©nuÃ© (Ã©tait 0.8, ma derniÃ¨re version 0.4)
+
+    const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
+    resize();
+    window.addEventListener('resize', resize);
+
+    const noise = (x: number, y: number) => {
+      const G = 2.71828;
+      return (G * Math.sin(G * x) * G * Math.sin(G * y) * (1 + x)) % 1;
+    };
+
+    const animate = () => {
+      const { width, height } = canvas;
+
+      const gradient = ctx.createLinearGradient(0, 0, width, height);
+      gradient.addColorStop(0, '#00001a');
+      gradient.addColorStop(0.5, '#0a0a3f');
+      gradient.addColorStop(1, '#00001a');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+
+      const imageData = ctx.createImageData(width, height);
+      const data = imageData.data;
+      const tOffset = speed * time;
+
+      for (let x = 0; x < width; x += 2) {
+        for (let y = 0; y < height; y += 2) {
+          const u = (x / width) * scale;
+          const v = (y / height) * scale;
+          const tex_x = u;
+          const tex_y = v + 0.03 * Math.sin(8.0 * tex_x - tOffset);
+
+          // Motif d'origine (plis nets) â€” juste attÃ©nuÃ©s
+          const pattern = 0.6 + 0.4 * Math.sin(
+            5.0 * (tex_x + tex_y + Math.cos(3.0 * tex_x + 5.0 * tex_y) + 0.02 * tOffset) +
+            Math.sin(20.0 * (tex_x + tex_y - 0.1 * tOffset))
+          );
+
+          const rnd = noise(x, y);
+          const intensity = Math.max(0, pattern - rnd / 15.0 * noiseIntensity);
+
+          const index = (y * width + x) * 4;
+          if (index < data.length) {
+            data[index]     = Math.floor(20 * intensity);
+            data[index + 1] = Math.floor(20 * intensity);
+            data[index + 2] = Math.floor(220 * intensity);
+            data[index + 3] = 255;
+          }
+        }
+      }
+      ctx.putImageData(imageData, 0, 0);
+
+      const rg = ctx.createRadialGradient(width/2, height/2, 0, width/2, height/2, Math.max(width,height)/2);
+      rg.addColorStop(0, 'rgba(0,0,0,0.05)');
+      rg.addColorStop(1, 'rgba(0,0,31,0.5)');
+      ctx.fillStyle = rg;
+      ctx.fillRect(0, 0, width, height);
+
+      time += 1;
+      animationRef.current = requestAnimationFrame(animate);
+    };
+    animate();
+
+    return () => {
+      window.removeEventListener('resize', resize);
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    };
+  }, []);
+
+  return <canvas ref={canvasRef} className="silk-canvas" aria-hidden="true" />;
+}
+
+
+----- components\SocialIcons.tsx -----
+export function InstagramIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
+      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+      <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
+    </svg>
+  );
+}
+
+
+----- next.config.mjs -----
+/** @type {import('next').NextConfig} */
+const nextConfig = {};
+export default nextConfig;
+
+
+----- next-env.d.ts -----
+/// <reference types="next" />
+/// <reference types="next/image-types/global" />
+import "./.next/dev/types/routes.d.ts";
+import "./.next/dev/types/root-params.d.ts";
+
+// NOTE: This file should not be edited
+// see https://nextjs.org/docs/app/api-reference/config/typescript for more information.
+
+
+
+----- package.json -----
+{
+  "name": "fanar-studio",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "lucide-react": "^1.31.0",
+    "next": "^16.3.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.0",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tailwindcss": "^4.1.0",
+    "typescript": "^5.7.2"
+  }
+}
+
+
+
+----- postcss.config.mjs -----
+export default {
+  plugins: {
+    '@tailwindcss/postcss': {},
+  },
+};
+
+
+----- tsconfig.json -----
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}
+
+
+
+----- vercel.json -----
+{
+  "framework": "nextjs"
+}

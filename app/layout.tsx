@@ -1,19 +1,18 @@
-import type { Metadata } from 'next';
-import './globals.css';
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
+
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: 'Fanar — studio web',
-  description: 'Fanar studio web — sites, applications, e-commerce, identité visuelle.',
-  icons: { icon: '/favicon.ico' },
+  title: "Fanar — Web Studio",
+  description: "Fast, secure websites built with psychology to turn visitors into clients.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fr">
-      <head>
-        <link rel="icon" href="/favicon.png" sizes="any" />
-      </head>
-      <body>{children}</body>
+    <html lang="en" suppressHydrationWarning className={inter.variable}>
+      <body className="font-sans antialiased">{children}</body>
     </html>
   );
 }
