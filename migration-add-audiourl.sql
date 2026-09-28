@@ -1,4 +1,4 @@
--- Add audioUrl column to briefs (run this in Supabase SQL editor if it doesn't exist)
+-- Add audio_url column to briefs if missing
 DO $$
 BEGIN
   IF NOT EXISTS (

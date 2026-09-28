@@ -12,7 +12,7 @@ export function AudioRecorder({ onRecordingComplete, disabled }: Props) {
   const [status, setStatus] = useState<"idle" | "listening" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
-  const [bars, setBars] = useState<number[]>(Array(24).fill(0));
+  const [bars, setBars] = useState<number[]>(Array(32).fill(0));
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -23,7 +23,6 @@ export function AudioRecorder({ onRecordingComplete, disabled }: Props) {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(0);
 
-  // Tick elapsed seconds while recording
   useEffect(() => {
     if (status === "listening") {
       timerRef.current = setInterval(() => {
@@ -38,18 +37,17 @@ export function AudioRecorder({ onRecordingComplete, disabled }: Props) {
     };
   }, [status]);
 
-  // Visualizer animation loop
+  // Simple, classic visualizer loop
   const drawVisualizer = useCallback(() => {
     const analyser = analyserRef.current;
     if (!analyser) return;
-    const bufferLength = analyser.frequencyBinCount;
-    const data = new Uint8Array(bufferLength);
+    const data = new Uint8Array(analyser.frequencyBinCount);
     analyser.getByteFrequencyData(data);
 
-    // Downsample to 24 bars
-    const step = Math.floor(bufferLength / 24);
+    const barCount = 32;
+    const step = Math.floor(data.length / barCount);
     const newBars: number[] = [];
-    for (let i = 0; i < 24; i++) {
+    for (let i = 0; i < barCount; i++) {
       let sum = 0;
       for (let j = 0; j < step; j++) sum += data[i * step + j] || 0;
       newBars.push(sum / step / 255);
@@ -72,7 +70,6 @@ export function AudioRecorder({ onRecordingComplete, disabled }: Props) {
     analyserRef.current = null;
   };
 
-  // Cleanup on unmount
   useEffect(() => () => cleanup(), []);
 
   const startRecording = async () => {
@@ -93,8 +90,8 @@ export function AudioRecorder({ onRecordingComplete, disabled }: Props) {
       audioCtxRef.current = audioCtx;
       const source = audioCtx.createMediaStreamSource(stream);
       const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 128;
-      analyser.smoothingTimeConstant = 0.7;
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.75;
       source.connect(analyser);
       analyserRef.current = analyser;
 
@@ -109,13 +106,11 @@ export function AudioRecorder({ onRecordingComplete, disabled }: Props) {
 
       recorder.onstop = () => {
         const finalDuration = (Date.now() - startTimeRef.current) / 1000;
-        const blob = new Blob(chunksRef.current, {
-          type: recorder.mimeType || "audio/webm",
-        });
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
         cleanup();
         if (finalDuration < 0.5) {
           setStatus("error");
-          setErrorMsg("Recording too short. Hold the button longer.");
+          setErrorMsg("Recording too short. Hold longer and try again.");
           return;
         }
         onRecordingComplete(blob, finalDuration);
@@ -132,7 +127,7 @@ export function AudioRecorder({ onRecordingComplete, disabled }: Props) {
       setStatus("error");
       setErrorMsg(
         err?.name === "NotAllowedError"
-          ? "Microphone blocked. Click the lock icon in the address bar → allow → reload."
+          ? "Microphone blocked. Click the lock icon in the address bar → allow microphone → reload."
           : err?.name === "NotFoundError"
           ? "No microphone found."
           : "Could not start recording. Please type instead."
@@ -141,7 +136,7 @@ export function AudioRecorder({ onRecordingComplete, disabled }: Props) {
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && status === "listening") {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
       mediaRecorderRef.current.stop();
     }
   };
@@ -149,18 +144,19 @@ export function AudioRecorder({ onRecordingComplete, disabled }: Props) {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3 flex-wrap">
+        {/* FIX: button is NOT disabled while listening, so Stop works */}
         <button
           type="button"
           onClick={status === "listening" ? stopRecording : startRecording}
-          disabled={disabled || status === "listening"}
+          disabled={disabled}
           className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-full border text-sm font-medium transition-all ${
             status === "listening"
-              ? "bg-red-50 border-red-300 text-red-600"
+              ? "bg-red-50 border-red-300 text-red-600 hover:bg-red-100"
               : "bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
           } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
         >
           {status === "listening" ? (
-            <><Square className="w-4 h-4" /> Stop & save ({elapsed.toFixed(1)}s)</>
+            <><Square className="w-4 h-4" /> Stop ({elapsed.toFixed(1)}s)</>
           ) : (
             <><Mic className="w-4 h-4" /> Record voice message</>
           )}
@@ -171,17 +167,14 @@ export function AudioRecorder({ onRecordingComplete, disabled }: Props) {
         )}
       </div>
 
-      {/* Sound visualizer: 24 frequency bars, only visible while recording */}
+      {/* Classic simple bar visualizer */}
       {status === "listening" && (
-        <div className="h-14 w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 flex items-center gap-1 overflow-hidden">
+        <div className="h-16 w-full rounded-lg bg-slate-100 border border-slate-200 px-2 flex items-end justify-center gap-[2px] overflow-hidden">
           {bars.map((h, i) => (
             <div
               key={i}
-              className="flex-1 rounded-sm transition-all duration-75"
-              style={{
-                height: `${Math.max(8, h * 100)}%`,
-                background: `linear-gradient(to top, #3b82f6, #8b5cf6)`,
-              }}
+              className="w-[6px] bg-blue-500 rounded-t-sm"
+              style={{ height: `${Math.max(4, h * 100)}%` }}
             />
           ))}
         </div>
