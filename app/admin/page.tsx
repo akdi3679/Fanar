@@ -23,14 +23,24 @@ export default async function AdminDashboard() {
   let allPageViews: any[] = [];
   let loadError: string | null = null;
 
+  const dbErrors: string[] = [];
   try {
-    [allBriefs, allVisitors, allPageViews] = await Promise.all([
-      db.select().from(briefs).orderBy(desc(briefs.createdAt)).catch(() => []),
-      db.select().from(visitors).orderBy(desc(visitors.createdAt)).catch(() => []),
-      db.select().from(pageViews).orderBy(desc(pageViews.createdAt)).catch(() => []),
-    ]);
-  } catch (err: any) {
-    loadError = err?.message || "Failed to load data. Run migration-tracking-clean.sql in Supabase SQL editor.";
+    allBriefs = await db.select().from(briefs).orderBy(desc(briefs.createdAt));
+  } catch (e: any) {
+    dbErrors.push("briefs: " + (e?.message || String(e)));
+  }
+  try {
+    allVisitors = await db.select().from(visitors).orderBy(desc(visitors.createdAt));
+  } catch (e: any) {
+    dbErrors.push("visitors: " + (e?.message || String(e)));
+  }
+  try {
+    allPageViews = await db.select().from(pageViews).orderBy(desc(pageViews.createdAt));
+  } catch (e: any) {
+    dbErrors.push("pageViews: " + (e?.message || String(e)));
+  }
+  if (dbErrors.length > 0) {
+    loadError = dbErrors.join("  |  ");
   }
 
   if (loadError) {
