@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAdminToken } from "@/lib/admin-auth";
-import { db } from "@/lib/db";
-import { briefs, visitors } from "@/drizzle/schema";
-import { desc } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
@@ -11,17 +8,24 @@ export async function GET(req: NextRequest) {
   if (!verifyAdminToken(token)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (!db) {
-    return NextResponse.json({ error: "Database not configured. Check DATABASE_URL in Vercel env." }, { status: 503 });
-  }
+
   try {
-    const [recentBriefs, recentVisitors] = await Promise.all([
-      db.select().from(briefs).orderBy(desc(briefs.createdAt)).limit(100),
-      db.select().from(visitors).orderBy(desc(visitors.createdAt)).limit(500),
+    const dbModule = await import("@/lib/db").catch(() => null);
+    if (!dbModule?.db) {
+      return NextResponse.json({ error: "Database not configured. Set DATABASE_URL in Vercel env." }, { status: 503 });
+    }
+
+    const schema = await import("@/drizzle/schema");
+    const { desc } = await import("drizzle-orm");
+
+    const [briefs, visitors] = await Promise.all([
+      dbModule.db.select().from(schema.briefs).orderBy(desc(schema.briefs.createdAt)).limit(100).catch(() => []),
+      dbModule.db.select().from(schema.visitors).orderBy(desc(schema.visitors.createdAt)).limit(500).catch(() => []),
     ]);
-    return NextResponse.json({ briefs: recentBriefs, visitors: recentVisitors });
+
+    return NextResponse.json({ briefs, visitors });
   } catch (e) {
     console.error("Admin data error:", e);
-    return NextResponse.json({ error: "Failed to load data" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to load data", detail: e instanceof Error ? e.message : "unknown" }, { status: 500 });
   }
 }
