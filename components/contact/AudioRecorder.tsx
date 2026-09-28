@@ -37,7 +37,7 @@ export function AudioRecorder({ onRecordingComplete, onRemove, disabled }: Props
       sum += v * v;
     }
     const rms = Math.sqrt(sum / data.length);
-    setWaveform((prev) => [...prev.slice(1), Math.min(1, rms * 2.2)]);
+    setWaveform((prev) => [...prev.slice(1), Math.min(1, rms * 2.4)]);
     animFrameRef.current = requestAnimationFrame(drawWaveform);
   }, []);
 
@@ -60,11 +60,20 @@ export function AudioRecorder({ onRecordingComplete, onRemove, disabled }: Props
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
+
       const ctx = new AudioContext();
       audioCtxRef.current = ctx;
+
+      // CRITICAL for mobile: AudioContext starts suspended on phones.
+      // Resuming it inside the tap gesture unlocks it so the visualizer moves.
+      if (ctx.state === "suspended") {
+        await ctx.resume();
+      }
+
       const src = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.6;
       src.connect(analyser);
       analyserRef.current = analyser;
 
@@ -109,9 +118,8 @@ export function AudioRecorder({ onRecordingComplete, onRemove, disabled }: Props
 
   return (
     <div className="space-y-2">
-      {/* THE single pill — identical look in every state */}
+      {/* The single pill — identical in every state */}
       <div className="inline-flex items-center gap-2 h-10 px-4 rounded-full border border-blue-200 bg-blue-50">
-        {/* IDLE: mic icon + text */}
         {state === "idle" && (
           <button
             type="button"
@@ -123,7 +131,6 @@ export function AudioRecorder({ onRecordingComplete, onRemove, disabled }: Props
           </button>
         )}
 
-        {/* RECORDING: visualizer + stop — inside the same pill */}
         {state === "recording" && (
           <>
             <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
@@ -147,7 +154,6 @@ export function AudioRecorder({ onRecordingComplete, onRemove, disabled }: Props
           </>
         )}
 
-        {/* RECORDED: static visualizer + retry + remove — inside the same pill */}
         {state === "recorded" && (
           <>
             <div className="flex items-center gap-[2px] h-4">

@@ -91,21 +91,21 @@ export default function ContactPage() {
       const formData = new FormData();
       formData.append("name", form.name);
       formData.append("email", form.email);
-      if (form.phone) formData.append("phone", form.phone);
-      if (form.businessName) formData.append("businessName", form.businessName);
-      if (form.businessType) formData.append("businessType", form.businessType);
-      if (form.business) formData.append("businessDescription", form.business);
-      if (form.goal) formData.append("projectType", form.goal);
-      if (form.budget) formData.append("budget", form.budget);
-      if (form.timeline) formData.append("timeline", form.timeline);
+      formData.append("phone", form.phone);
+      formData.append("businessName", form.businessName);
+      formData.append("businessType", form.businessType);
+      formData.append("oldWebsite", form.oldWebsite);
+      formData.append("businessDescription", form.business);
+      formData.append("projectType", form.goal);
+      formData.append("budget", form.budget);
+      formData.append("timeline", form.timeline);
       formData.append("language", locale);
       formData.append("questionnaire", JSON.stringify(qualification || {}));
-
       if (audioBlob) {
         formData.append("audio", audioBlob, `voice-${Date.now()}.webm`);
       }
 
-      const res = await fetch("/api/brief", { method: "POST", body: formData });
+      await fetch("/api/brief", { method: "POST", body: formData });
       if (!res.ok) throw new Error("Failed to submit");
 
       setToast({ type: "success", message: t("toastSuccess") });
