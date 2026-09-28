@@ -1,18 +1,25 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { VisitorTracker } from "@/components/VisitorTracker";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: "Fanar â€” Web Studio",
+  title: "Fanar — Web Studio",
   description: "Fast, secure websites built with psychology to turn visitors into clients.",
-`n  icons: {`n    icon: "/favicon.ico",`n  },};
+  icons: {
+    icon: "/favicon.ico",
+  },
+};
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning className={inter.variable}>
-      <body className="font-sans antialiased">{children}</body>
+      <body className="font-sans antialiased">
+        <VisitorTracker />
+        {children}
+      </body>
     </html>
   );
 }
