@@ -41,9 +41,9 @@ export function AudioRecorder({ onTranscript, locale, disabled }: Props) {
       setStatus("error");
       setErrorMsg(
         e.error === "not-allowed" || e.error === "service-not-allowed"
-          ? "Microphone blocked by the browser. See the diagnosis box below."
+          ? "The browser blocked the microphone. See the diagnosis box below for the fix."
           : e.error === "no-speech" ? "No speech detected. Try again and speak clearly."
-          : e.error === "audio-capture" ? "No microphone found."
+          : e.error === "audio-capture" ? "No microphone found. Check your device."
           : e.error === "network" ? "Speech service needs network. This browser may not support transcription."
           : "Voice input failed: " + e.error
       );
@@ -53,19 +53,21 @@ export function AudioRecorder({ onTranscript, locale, disabled }: Props) {
     return () => { try { rec.stop(); } catch {} };
   }, [locale, onTranscript]);
 
+  // Diagnostic ONLY — we read the state but NEVER use it to block the attempt
   const runDiagnostics = async (): Promise<string> => {
     const lines: string[] = [];
-    lines.push("Secure context (HTTPS): " + (window.isSecureContext ? "YES" : "NO (mic needs HTTPS)"));
+    lines.push("Secure context (HTTPS): " + (window.isSecureContext ? "YES" : "NO"));
     lines.push("mediaDevices API: " + (navigator.mediaDevices ? "present" : "MISSING"));
     try {
       if (navigator.permissions?.query) {
         const p = await navigator.permissions.query({ name: "microphone" as PermissionName });
         lines.push("Mic permission state: " + p.state.toUpperCase());
         if (p.state === "denied") {
-          lines.push(">> PERMISSION IS DENIED. Click the lock/site icon in the address bar -> Site settings -> Microphone -> set to Allow, then reload.");
+          lines.push(">> If the attempt below still fails: click the lock icon in the address bar -> Site settings -> Microphone -> set to ALLOW, then RELOAD the page.");
+          lines.push(">> On Iron: also check iron://settings/content/microphone and make sure no global block is active, then fully restart Iron.");
         }
       } else {
-        lines.push("permissions.query not supported here");
+        lines.push("permissions.query not supported");
       }
     } catch {
       lines.push("could not read permission state");
@@ -91,17 +93,12 @@ export function AudioRecorder({ onTranscript, locale, disabled }: Props) {
 
     setStatus("requesting");
 
-    // Run diagnostics first so we know exactly what's happening
+    // Diagnostic for information only
     const d = await runDiagnostics();
     setDiag(d);
 
-    // If permission already denied, don't even try — tell the user how to fix it
-    if (d.includes("DENIED")) {
-      setStatus("error");
-      setErrorMsg("Microphone permission is DENIED in your browser. Follow the instruction in the diagnosis box, then reload the page.");
-      return;
-    }
-
+    // KEY CHANGE: we ALWAYS attempt, even if the state reading says DENIED.
+    // Some privacy browsers report wrong/stale states. Only the real attempt tells the truth.
     try {
       if (navigator.mediaDevices?.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -112,13 +109,11 @@ export function AudioRecorder({ onTranscript, locale, disabled }: Props) {
       const name = err?.name || "UnknownError";
       setErrorMsg(
         name === "NotAllowedError" || name === "PermissionDeniedError"
-          ? "The browser refused microphone access. Check the diagnosis box for the exact reason."
-          : name === "NotFoundError" ? "No microphone found."
+          ? "The browser really blocked the microphone this time. Fix: lock icon -> Site settings -> Microphone -> Allow -> then RELOAD the page. On Iron, check iron://settings/content/microphone and fully restart the browser."
+          : name === "NotFoundError" ? "No microphone found. Check your device."
           : name === "NotReadableError" ? "Microphone is in use by another app."
           : "Microphone error: " + name
       );
-      const d2 = await runDiagnostics();
-      setDiag(d2);
       return;
     }
 
@@ -154,7 +149,7 @@ export function AudioRecorder({ onTranscript, locale, disabled }: Props) {
         {status === "requesting" ? <Loader2 className="w-4 h-4 animate-spin" />
           : status === "listening" ? <Square className="w-4 h-4" />
           : <Mic className="w-4 h-4" />}
-        {status === "requesting" ? "Checking microphone..."
+        {status === "requesting" ? "Trying microphone..."
           : status === "listening" ? "Stop recording"
           : "Speak instead of typing"}
         {status === "listening" && <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />}
