@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { briefs } from "@/drizzle/schema";
 
-// Readable labels for questionnaire codes
 const Q1: Record<string, string> = {
   yes_demand: "Yes, people already call/message me",
   some_growth: "I have some clients but I want more",
@@ -24,11 +23,11 @@ const Q3: Record<string, string> = {
   not_sure: "I'm not sure yet",
 };
 
-const orDash = (v: any) => (v !== null && v !== undefined && String(v).trim() !== "" ? String(v).trim() : "—");
+// Show value if filled, "(empty)" if not — so every field is always visible
+const show = (v: any) => (v !== null && v !== undefined && String(v).trim() !== "" ? String(v).trim() : "(empty)");
 
 function parseUA(ua: string) {
-  const deviceType = /Mobile|Android|iPhone/i.test(ua) ? "mobile"
-    : /Tablet|iPad/i.test(ua) ? "tablet" : "desktop";
+  const deviceType = /Mobile|Android|iPhone/i.test(ua) ? "mobile" : /Tablet|iPad/i.test(ua) ? "tablet" : "desktop";
   const b = ua.match(/(Chrome|Firefox|Safari|Edge|Opera|Iron)\/(\d+)/);
   const o = ua.match(/(Windows|Mac OS X|Linux|Android|iOS)[ \/]?([\d._]*)/);
   return { deviceType, browserName: b?.[1] || "Unknown", osName: o?.[1] || "Unknown" };
@@ -52,23 +51,21 @@ async function uploadAudioToSupabase(blob: Blob, filename: string): Promise<stri
 async function sendTextToTelegram(text: string) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
-  if (!token || !chatId) { console.error("[telegram] missing env vars"); return false; }
+  if (!token || !chatId) { console.error("[telegram] missing env"); return false; }
   try {
     const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML" }),
     });
     const j = await res.json().catch(() => ({}));
-    if (!res.ok || !j.ok) { console.error("[telegram] send failed:", j.description); return false; }
-    return true;
-  } catch (e) { console.error("[telegram] error:", e); return false; }
+    return !!(res.ok && j.ok);
+  } catch { return false; }
 }
 
 async function sendVoiceToTelegram(blob: Blob, caption: string) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
-  if (!token || !chatId) { console.error("[telegram] missing env vars"); return false; }
+  if (!token || !chatId) return false;
   try {
     const fd = new FormData();
     fd.append("chat_id", chatId);
@@ -76,9 +73,8 @@ async function sendVoiceToTelegram(blob: Blob, caption: string) {
     if (caption) fd.append("caption", caption.slice(0, 1024));
     const res = await fetch(`https://api.telegram.org/bot${token}/sendVoice`, { method: "POST", body: fd });
     const j = await res.json().catch(() => ({}));
-    if (!res.ok || !j.ok) { console.error("[telegram] voice failed:", j.description); return false; }
-    return true;
-  } catch (e) { console.error("[telegram] voice error:", e); return false; }
+    return !!(res.ok && j.ok);
+  } catch { return false; }
 }
 
 export async function POST(req: NextRequest) {
@@ -97,7 +93,6 @@ export async function POST(req: NextRequest) {
       data = await req.json();
     }
 
-    // Extract ALL fields (empty allowed)
     const name = String(data.name || "").trim();
     const email = String(data.email || "").trim();
     const phone = String(data.phone || "").trim();
@@ -114,7 +109,6 @@ export async function POST(req: NextRequest) {
     if (!/^\S+@\S+\.\S+$/.test(email)) return NextResponse.json({ error: "Valid email required" }, { status: 400 });
     if (!audioBlob && (!desc || desc.length < 5)) return NextResponse.json({ error: "Message or voice required" }, { status: 400 });
 
-    // Map questionnaire codes -> readable text
     let qual: any = {};
     try { qual = data.questionnaire ? JSON.parse(String(data.questionnaire)) : {}; } catch {}
     const q1 = Q1[qual.clients] || qual.clients || "";
@@ -126,14 +120,13 @@ export async function POST(req: NextRequest) {
     const country = req.headers.get("x-vercel-ip-country") || "Unknown";
     const parsed = parseUA(ua);
 
-    // Upload voice to Supabase Storage
     let audioUrl: string | null = null;
     if (audioBlob) {
       const fn = `brief-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webm`;
       audioUrl = await uploadAudioToSupabase(audioBlob, fn);
     }
 
-    // Save EVERYTHING to Supabase
+    // Save ALL fields to Supabase
     if (db) {
       try {
         await db.insert(briefs).values({
@@ -143,7 +136,7 @@ export async function POST(req: NextRequest) {
           businessName: businessName || null,
           businessType: businessType || null,
           oldWebsite: oldWebsite || null,
-          businessDescription: desc || "[voice message only]",
+          businessDescription: desc || null,
           projectType: projectType || null,
           budget: budget || null,
           timeline: timeline || null,
@@ -153,48 +146,32 @@ export async function POST(req: NextRequest) {
           userAgent: ua, ipAddress: ip, country,
           deviceType: parsed.deviceType, browserName: parsed.browserName, osName: parsed.osName,
         } as any);
-        console.log("[brief] saved to DB OK");
       } catch (e) { console.error("[brief] DB save failed:", e); }
     }
 
-    // Build COMPLETE Telegram message (every field, filled or empty)
+    // COMPLETE Telegram message — every field, filled or "(empty)", voice status explicit
+    const voiceStatus = audioBlob ? "🎙 Voice attached ✅" : "No voice";
     const caption =
-      `🎙 <b>NEW BRIEF — Fanar Studio</b>\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n\n` +
+      `🎙 <b>NEW BRIEF — Fanar Studio</b>\n━━━━━━━━━━━━━━━━━━━━\n\n` +
       `👤 <b>CONTACT</b>\n` +
-      `• Name: ${orDash(name)}\n` +
-      `• Email: ${orDash(email)}\n` +
-      `• Phone: ${orDash(phone)}\n\n` +
+      `• Name: ${show(name)}\n• Email: ${show(email)}\n• Phone: ${show(phone)}\n\n` +
       `🏢 <b>BUSINESS</b>\n` +
-      `• Business name: ${orDash(businessName)}\n` +
-      `• Business type: ${orDash(businessType)}\n` +
-      `• Current website: ${orDash(oldWebsite)}\n\n` +
+      `• Business name: ${show(businessName)}\n• Business type: ${show(businessType)}\n• Current website: ${show(oldWebsite)}\n\n` +
       `🎯 <b>PROJECT</b>\n` +
-      `• Description: ${desc ? desc.slice(0, 700) : (audioBlob ? "🎙 [voice message attached]" : "—")}\n` +
-      `• Goal: ${orDash(projectType)}\n` +
-      `• Budget: ${orDash(budget)}\n` +
-      `• Timeline: ${orDash(timeline)}\n\n` +
+      `• Description: ${desc ? desc.slice(0, 700) : "(empty)"}\n` +
+      `• Goal: ${show(projectType)}\n• Budget: ${show(budget)}\n• Timeline: ${show(timeline)}\n\n` +
       `❓ <b>QUESTIONNAIRE</b>\n` +
-      `• Q1 — Do people look for what you offer?\n   ${orDash(q1)}\n` +
-      `• Q2 — What takes most of your time?\n   ${orDash(q2)}\n` +
-      `• Q3 — What should visitors do on your site?\n   ${orDash(q3)}\n\n` +
-      `🎙 <b>VOICE:</b> ${audioBlob ? "attached ✅" : "none"}\n\n` +
+      `• Q1 (Do people look for what you offer?): ${show(q1)}\n` +
+      `• Q2 (What takes most of your time?): ${show(q2)}\n` +
+      `• Q3 (What should visitors do?): ${show(q3)}\n\n` +
+      `🔊 <b>VOICE:</b> ${voiceStatus}\n\n` +
       `🌍 <b>CONTEXT</b>\n` +
-      `• Country: ${orDash(country)}\n` +
-      `• Language: ${orDash(language)}\n` +
-      `• Device: ${orDash(parsed.deviceType)} · ${orDash(parsed.browserName)} · ${orDash(parsed.osName)}`;
+      `• Country: ${show(country)}\n• Language: ${show(language)}\n• Device: ${show(parsed.deviceType)} · ${show(parsed.browserName)} · ${show(parsed.osName)}`;
 
-    // Send to Telegram: voice with full caption, or text
     if (audioBlob) {
       const voiceOk = await sendVoiceToTelegram(audioBlob, caption);
-      if (!voiceOk) {
-        // Fallback: send as text so nothing is lost
-        await sendTextToTelegram(caption + "\n\n⚠️ (voice upload failed — text only)");
-      }
-      // If voice succeeded but caption was truncated, send full text as follow-up
-      if (voiceOk && caption.length > 1000) {
-        await sendTextToTelegram(caption);
-      }
+      if (!voiceOk) await sendTextToTelegram(caption + "\n\n⚠️ (voice upload failed — text only)");
+      else if (caption.length > 1000) await sendTextToTelegram(caption); // full details as follow-up
     } else {
       await sendTextToTelegram(caption);
     }

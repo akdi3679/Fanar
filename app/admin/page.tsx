@@ -152,15 +152,21 @@ export default async function AdminDashboard() {
                         <span className="text-xs text-slate-400">{new Date(b.createdAt).toLocaleDateString()}</span>
                       </div>
 
-                      {b.businessName && (
-                        <p className="text-sm font-medium text-slate-700 mb-1">
-                          {b.businessName} {b.businessType && `(${b.businessType})`}
-                        </p>
-                      )}
+                      {/* ALL fields shown, empty displayed as (empty) */}
+                      <div className="text-xs text-slate-600 mb-2 space-y-0.5 bg-slate-50 rounded-lg p-2.5 border border-slate-100">
+                        <p><span className="font-medium text-slate-500">Phone:</span> {b.phone || "(empty)"}</p>
+                        <p><span className="font-medium text-slate-500">Business name:</span> {b.businessName || "(empty)"}</p>
+                        <p><span className="font-medium text-slate-500">Business type:</span> {b.businessType || "(empty)"}</p>
+                        <p><span className="font-medium text-slate-500">Website:</span> {b.oldWebsite || "(empty)"}</p>
+                        <p><span className="font-medium text-slate-500">Budget:</span> {b.budget || "(empty)"}</p>
+                        <p><span className="font-medium text-slate-500">Timeline:</span> {b.timeline || "(empty)"}</p>
+                        <p><span className="font-medium text-slate-500">Voice:</span> {b.audioUrl ? "🎙 yes" : "no voice"}</p>
+                      </div>
 
-                      {b.businessDescription && (
-                        <p className="text-sm text-slate-600 mb-2 line-clamp-3">{b.businessDescription}</p>
-                      )}
+                      <p className="text-sm text-slate-600 mb-2">
+                        <span className="font-medium text-slate-500">Description: </span>
+                        {b.businessDescription || "(empty)"}
+                      </p>
 
                       {q && (
                         <div className="mt-3 pt-3 border-t border-slate-100">
