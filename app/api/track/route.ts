@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, visitorId });
   } catch (err) {
-    console.error("Track error:", err);
+    console.error("[track] save error:", err);
     return NextResponse.json({ error: "Tracking failed" }, { status: 500 });
   }
 }
