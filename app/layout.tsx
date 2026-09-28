@@ -5,9 +5,9 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: "Fanar — Web Studio",
+  title: "Fanar â€” Web Studio",
   description: "Fast, secure websites built with psychology to turn visitors into clients.",
-};
+`n  icons: {`n    icon: "/favicon.ico",`n  },};
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

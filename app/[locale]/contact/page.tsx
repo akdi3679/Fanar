@@ -1,237 +1,275 @@
 "use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
-import { Send, Loader2, CheckCircle2 } from 'lucide-react';
-import { AudioRecorder } from '@/components/contact/AudioRecorder';
-import Header from '@/components/Header';
-import Footer from '@/components/Footer';
+import { useState, useEffect } from "react";
+import { useTranslations, useLocale } from "next-intl";
+import { useRouter } from "next/navigation";
+import { Send, CheckCircle2, Loader2, Lock, Info } from "lucide-react";
+import { QualificationWizard, type QualificationAnswers } from "@/components/contact/QualificationWizard";
+import { AudioRecorder } from "@/components/contact/AudioRecorder";
+import { MorphingText } from "@/components/ui/MorphingText";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
+
+const greetingMap: Record<string, string[]> = {
+  fr: ["Bonjour", "Bienvenue"],
+  en: ["Hello", "Welcome"],
+  ar: ["مرحباً", "أهلاً"],
+  es: ["Hola", "Bienvenido"],
+  de: ["Hallo", "Willkommen"],
+};
 
 export default function ContactPage() {
-  const t = useTranslations('Contact');
+  const t = useTranslations("Contact");
+  const locale = useLocale();
   const router = useRouter();
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    businessName: '',
-    businessType: '',
-    businessDescription: '',
-    projectType: '',
-    budget: '',
-    timeline: '',
+  const greetings = greetingMap[locale] || greetingMap.en;
+
+  const [stage, setStage] = useState<"greeting" | "qualify" | "form" | "loading" | "success" | "error">("greeting");
+  const [qualification, setQualification] = useState<QualificationAnswers | null>(null);
+  const [audioData, setAudioData] = useState<{ blob: Blob; transcript: string } | null>(null);
+  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setStage("qualify"), 3000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
+  const [form, setForm] = useState({
+    name: "", email: "", phone: "",
+    businessName: "", businessType: "", oldWebsite: "",
+    business: "", goal: "", timeline: "", trigger: "", budget: "",
   });
-  const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
-  const [errorMsg, setErrorMsg] = useState('');
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const update = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }));
+
+  const handleQualificationComplete = (answers: QualificationAnswers) => {
+    setQualification(answers);
+    const goalMap: Record<string, string> = {
+      call_book: "Get more clients",
+      buy: "Sell products online",
+      showcase_contact: "Showcase my work",
+      learn: "Build credibility",
+    };
+    if (answers.goal && goalMap[answers.goal]) update("goal", goalMap[answers.goal]);
+    setStage("form");
+  };
+
+  const handleAudioComplete = (blob: Blob, transcript: string) => {
+    setAudioData({ blob, transcript });
+    update("business", transcript);
+  };
+
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setStatus('submitting');
-    setErrorMsg('');
-
+    setStage("loading");
     try {
-      const response = await fetch('/api/brief', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+      const res = await fetch("/api/brief", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          ...form, 
+          language: locale, 
+          audioTranscript: audioData?.transcript || "", 
+          qualification,
+          questionnaire: qualification 
+        }),
       });
-
-      const result = await response.json();
-
-      if (result.success) {
-        setStatus('success');
-        setTimeout(() => router.push('/'), 3000);
-      } else {
-        setStatus('error');
-        setErrorMsg(result.error || 'Submission failed');
-      }
+      
+      if (!res.ok) throw new Error("Failed to submit");
+      
+      setToast({ type: "success", message: t("toastSuccess") });
+      setForm({
+        name: "", email: "", phone: "",
+        businessName: "", businessType: "", oldWebsite: "",
+        business: "", goal: "", timeline: "", trigger: "", budget: "",
+      });
+      setAudioData(null);
+      setStage("form"); // Stay on form stage
     } catch (error) {
-      setStatus('error');
-      setErrorMsg('Network error. Please try again.');
+      setStage("error");
+      setToast({ type: "error", message: t("toastError") });
     }
   };
 
-  const handleTranscript = (text: string) => {
-    setFormData(prev => ({
-      ...prev,
-      businessDescription: prev.businessDescription + ' ' + text,
-    }));
-  };
-
-  if (status === 'success') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center">
-          <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-slate-900 mb-2">Message Sent!</h1>
-          <p className="text-slate-600">Thank you. I will respond within 24 hours.</p>
-        </div>
-      </div>
-    );
-  }
+  const inputClass =
+    "w-full px-4 py-3.5 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all";
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-white relative">
       <Header />
-      
-      <main className="max-w-3xl mx-auto px-6 py-12">
-        <h1 className="text-3xl font-bold text-slate-900 mb-8">{t('title')}</h1>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Name & Email */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                {t('name')} <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                {t('email')} <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="email"
-                required
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-              />
-            </div>
-          </div>
-
-          {/* Phone */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">{t('phone')}</label>
-            <input
-              type="tel"
-              value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-            />
-          </div>
-
-          {/* Business Info */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">{t('businessName')}</label>
-              <input
-                type="text"
-                value={formData.businessName}
-                onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">{t('businessType')}</label>
-              <input
-                type="text"
-                value={formData.businessType}
-                onChange={(e) => setFormData({ ...formData, businessType: e.target.value })}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-              />
-            </div>
-          </div>
-
-          {/* Project Description with Audio */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              {t('businessDescription')} <span className="text-red-500">*</span>
-            </label>
-            <AudioRecorder onTranscript={handleTranscript} language="fr" />
-            <textarea
-              required
-              rows={6}
-              value={formData.businessDescription}
-              onChange={(e) => setFormData({ ...formData, businessDescription: e.target.value })}
-              placeholder="Tell us about your project..."
-              className="w-full mt-3 px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-            />
-          </div>
-
-          {/* Project Type */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">{t('projectType')}</label>
-            <select
-              value={formData.projectType}
-              onChange={(e) => setFormData({ ...formData, projectType: e.target.value })}
-              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-            >
-              <option value="">Select...</option>
-              <option value="Landing Page">Landing Page</option>
-              <option value="Showcase Site">Showcase Site</option>
-              <option value="E-commerce">E-commerce</option>
-              <option value="Blog">Blog</option>
-              <option value="CMS">CMS</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-
-          {/* Budget & Timeline */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">{t('budget')}</label>
-              <select
-                value={formData.budget}
-                onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-              >
-                <option value="">Select...</option>
-                <option value="< 3k">&lt; 3k</option>
-                <option value="3k - 8k">3k - 8k</option>
-                <option value="8k - 15k">8k - 15k</option>
-                <option value="15k+">15k+</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">{t('timeline')}</label>
-              <select
-                value={formData.timeline}
-                onChange={(e) => setFormData({ ...formData, timeline: e.target.value })}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-              >
-                <option value="">Select...</option>
-                <option value="ASAP">ASAP</option>
-                <option value="1-2 months">1-2 months</option>
-                <option value="3+ months">3+ months</option>
-                <option value="Just exploring">Just exploring</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Error Message */}
-          {status === 'error' && errorMsg && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
-              {errorMsg}
-            </div>
-          )}
-
-          {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={status === 'submitting'}
-            className="w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {status === 'submitting' ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                Sending...
-              </>
+      {toast && (
+        <div className="fixed top-20 right-6 z-50 animate-slide-in max-w-sm">
+          <div className={`flex items-start gap-3 p-4 rounded-xl shadow-lg border ${
+            toast.type === "success" 
+              ? "bg-green-50 border-green-200 text-green-900" 
+              : "bg-red-50 border-red-200 text-red-900"
+          }`}>
+            {toast.type === "success" ? (
+              <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
             ) : (
-              <>
-                <Send className="w-5 h-5" />
-                Send Message
-              </>
+              <CheckCircle2 className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
             )}
-          </button>
-        </form>
+            <div className="flex-1">
+              <p className="text-sm font-medium">{toast.message}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <main className="max-w-3xl mx-auto px-6 py-12">
+        {stage === "greeting" && (
+          <div className="min-h-[60vh] flex items-center justify-center">
+            <MorphingText 
+              texts={greetings} 
+              className="text-slate-900"
+            />
+          </div>
+        )}
+
+        {stage === "qualify" && (
+          <div>
+            <div className="text-center mb-8">
+              <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-3">{t("wizardTitle")}</h1>
+              <p className="text-slate-600 max-w-xl mx-auto">{t("wizardSubtitle")}</p>
+            </div>
+            <QualificationWizard onComplete={handleQualificationComplete} />
+          </div>
+        )}
+
+        {(stage === "form" || stage === "error") && (
+          <div>
+            <div className="text-center mb-10">
+              <button onClick={() => setStage("qualify")} className="text-sm text-slate-500 hover:text-slate-900 transition-colors mb-4">
+                ← {t("backToQuestions")}
+              </button>
+              <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-3">{t("title")}</h1>
+              <p className="text-slate-600">{t("subtitle")}</p>
+            </div>
+
+            <form onSubmit={onSubmit} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-6">
+              <div className="space-y-4">
+                <h2 className="text-lg font-semibold text-slate-900">{t("sectionYou")}</h2>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">{t("name")} *</label>
+                  <input required value={form.name} onChange={(e) => update("name", e.target.value)} placeholder={t("namePlaceholder")} className={inputClass} autoComplete="name" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">{t("email")} *</label>
+                    <input required type="email" value={form.email} onChange={(e) => update("email", e.target.value)} placeholder={t("emailPlaceholder")} className={inputClass} autoComplete="email" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">{t("phone")}</label>
+                    <input type="tel" value={form.phone} onChange={(e) => update("phone", e.target.value)} placeholder={t("phonePlaceholder")} className={inputClass} autoComplete="tel" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-4 border-t border-slate-100">
+                <h2 className="text-lg font-semibold text-slate-900">{t("sectionBusiness")}</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">{t("businessName")}</label>
+                    <input value={form.businessName} onChange={(e) => update("businessName", e.target.value)} placeholder={t("businessNamePlaceholder")} className={inputClass} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">{t("businessType")}</label>
+                    <select value={form.businessType} onChange={(e) => update("businessType", e.target.value)} className={inputClass}>
+                      <option value="">{t("selectType")}</option>
+                      <option value="E-commerce">{t("typeEcom")}</option>
+                      <option value="Service">{t("typeService")}</option>
+                      <option value="Portfolio">{t("typePortfolio")}</option>
+                      <option value="Blog">{t("typeBlog")}</option>
+                      <option value="Other">{t("typeOther")}</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">{t("oldWebsite")}</label>
+                  <input type="url" value={form.oldWebsite} onChange={(e) => update("oldWebsite", e.target.value)} placeholder={t("oldWebsitePlaceholder")} className={inputClass} />
+                  <p className="text-xs text-slate-400 mt-1">{t("oldWebsiteHelp")}</p>
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-4 border-t border-slate-100">
+                <h2 className="text-lg font-semibold text-slate-900">{t("sectionProject")}</h2>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">{t("businessDescription")} *</label>
+                  <div className="mb-4">
+                    <AudioRecorder onTranscript={handleAudioComplete} isDisabled={stage === "loading"} />
+                  </div>
+                  <textarea
+                    required
+                    rows={5}
+                    value={form.business}
+                    onChange={(e) => update("business", e.target.value)}
+                    placeholder={t("businessPlaceholder")}
+                    className={inputClass + " resize-none"}
+                  />
+                  <p className="text-xs text-slate-400 mt-1.5">{t("businessHelp")}</p>
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-4 border-t border-slate-100">
+                <h2 className="text-lg font-semibold text-slate-900">{t("sectionTimeline")}</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">{t("timeline")}</label>
+                    <select value={form.timeline} onChange={(e) => update("timeline", e.target.value)} className={inputClass}>
+                      <option value="">{t("selectTimeline")}</option>
+                      <option value="ASAP">{t("timelineASAP")}</option>
+                      <option value="1-2 months">{t("timeline12")}</option>
+                      <option value="3+ months">{t("timeline3")}</option>
+                      <option value="Just exploring">{t("timelineExplore")}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="flex items-center gap-1.5 text-sm font-medium text-slate-700 mb-1.5">
+                      {t("paymentLabel")}
+                      <span className="relative group inline-flex">
+                        <Info className="w-4 h-4 text-slate-400 cursor-help" />
+                        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-64 p-3 rounded-xl bg-slate-900 text-white text-xs leading-relaxed shadow-xl z-20">
+                          {t("paymentInfo")}
+                        </span>
+                      </span>
+                    </label>
+                    <select value={form.budget} onChange={(e) => update("budget", e.target.value)} className={inputClass}>
+                      <option value="">{t("paymentChoose")}</option>
+                      <option value="cash">{t("payCash")}</option>
+                      <option value="installments">{t("payInstallments")}</option>
+                      <option value="discuss">{t("payDiscuss")}</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {stage === "error" && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{t("error")}</div>
+              )}
+
+              <button
+                type="submit"
+                disabled={stage === "loading" || !form.name || !form.email || !form.business}
+                className="w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {stage === "loading" ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                {stage === "loading" ? t("submitting") : t("submit")}
+              </button>
+
+              <p className="text-xs text-slate-500 text-center flex items-center justify-center gap-1.5">
+                <Lock className="w-3 h-3" /> {t("privacy")}
+              </p>
+            </form>
+          </div>
+        )}
       </main>
 
       <Footer />
