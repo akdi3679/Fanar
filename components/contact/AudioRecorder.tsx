@@ -1,176 +1,206 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
-import { Mic, Square, AlertCircle, Loader2 } from "lucide-react";
 
-interface Props {
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Mic, Square, Loader2 } from 'lucide-react';
+
+interface AudioRecorderProps {
   onTranscript: (text: string) => void;
-  locale: string;
   disabled?: boolean;
+  language?: string;
 }
-const langMap: Record<string, string> = { fr: "fr-FR", en: "en-US", ar: "ar-SA", es: "es-ES", de: "de-DE" };
-type Status = "idle" | "requesting" | "listening" | "error" | "unsupported";
 
-export function AudioRecorder({ onTranscript, locale, disabled }: Props) {
-  const [status, setStatus] = useState<Status>("idle");
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [diag, setDiag] = useState<string | null>(null);
-  const [supported, setSupported] = useState<boolean | null>(null);
-  const recRef = useRef<any>(null);
-  const accRef = useRef("");
+export function AudioRecorder({ onTranscript, disabled, language = 'fr' }: AudioRecorderProps) {
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [visualizerData, setVisualizerData] = useState<number[]>([]);
+  
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const startVisualization = useCallback(() => {
+    if (!analyserRef.current || !canvasRef.current) return;
+
+    const analyser = analyserRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+
+    const draw = () => {
+      animationFrameRef.current = requestAnimationFrame(draw);
+      analyser.getByteFrequencyData(dataArray);
+
+      ctx.fillStyle = 'rgb(241, 245, 249)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const barWidth = (canvas.width / bufferLength) * 2.5;
+      let barHeight;
+      let x = 0;
+
+      for (let i = 0; i < bufferLength; i++) {
+        barHeight = (dataArray[i] / 255) * canvas.height;
+        
+        const hue = (i / bufferLength) * 200 + 200;
+        ctx.fillStyle = `hsl(${hue}, 70%, 60%)`;
+        ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+        
+        x += barWidth + 1;
+      }
+
+      const data = Array.from(dataArray.slice(0, 32)).map(v => v / 255);
+      setVisualizerData(data);
+    };
+
+    draw();
+  }, []);
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      // Setup audio context and analyser
+      const audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      
+      audioContextRef.current = audioContext;
+      analyserRef.current = analyser;
+
+      // Setup media recorder
+      const mediaRecorder = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        stream.getTracks().forEach(track => track.stop());
+        
+        // Stop visualization
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+        }
+        if (audioContextRef.current) {
+          audioContextRef.current.close();
+        }
+
+        // Transcribe
+        setIsTranscribing(true);
+        try {
+          const formData = new FormData();
+          formData.append('audio', audioBlob, 'recording.webm');
+          formData.append('language', language);
+
+          const response = await fetch('/api/transcribe', {
+            method: 'POST',
+            body: formData,
+          });
+
+          const result = await response.json();
+          if (result.success) {
+            onTranscript(result.text);
+          }
+        } catch (error) {
+          console.error('Transcription failed:', error);
+        } finally {
+          setIsTranscribing(false);
+        }
+      };
+
+      mediaRecorder.start();
+      mediaRecorderRef.current = mediaRecorder;
+      setIsRecording(true);
+      startVisualization();
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
 
   useEffect(() => {
-    const SR = typeof window !== "undefined"
-      ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-      : null;
-    setSupported(!!SR);
-    if (!SR) return;
-
-    const rec = new SR();
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.lang = langMap[locale] || "fr-FR";
-    rec.onresult = (e: any) => {
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) {
-          accRef.current += e.results[i][0].transcript + " ";
-          onTranscript(accRef.current.trim());
-        }
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
       }
     };
-    rec.onerror = (e: any) => {
-      setStatus("error");
-      setErrorMsg(
-        e.error === "not-allowed" || e.error === "service-not-allowed"
-          ? "The browser blocked the microphone. See the diagnosis box below for the fix."
-          : e.error === "no-speech" ? "No speech detected. Try again and speak clearly."
-          : e.error === "audio-capture" ? "No microphone found. Check your device."
-          : e.error === "network" ? "Speech service needs network. This browser may not support transcription."
-          : "Voice input failed: " + e.error
-      );
-    };
-    rec.onend = () => setStatus((s) => (s === "listening" ? "idle" : s));
-    recRef.current = rec;
-    return () => { try { rec.stop(); } catch {} };
-  }, [locale, onTranscript]);
-
-  // Diagnostic ONLY — we read the state but NEVER use it to block the attempt
-  const runDiagnostics = async (): Promise<string> => {
-    const lines: string[] = [];
-    lines.push("Secure context (HTTPS): " + (window.isSecureContext ? "YES" : "NO"));
-    lines.push("mediaDevices API: " + (navigator.mediaDevices ? "present" : "MISSING"));
-    try {
-      if (navigator.permissions?.query) {
-        const p = await navigator.permissions.query({ name: "microphone" as PermissionName });
-        lines.push("Mic permission state: " + p.state.toUpperCase());
-        if (p.state === "denied") {
-          lines.push(">> If the attempt below still fails: click the lock icon in the address bar -> Site settings -> Microphone -> set to ALLOW, then RELOAD the page.");
-          lines.push(">> On Iron: also check iron://settings/content/microphone and make sure no global block is active, then fully restart Iron.");
-        }
-      } else {
-        lines.push("permissions.query not supported");
-      }
-    } catch {
-      lines.push("could not read permission state");
-    }
-    return lines.join("\n");
-  };
-
-  const toggle = async () => {
-    setErrorMsg(null);
-    setDiag(null);
-
-    if (status === "listening") {
-      recRef.current?.stop();
-      setStatus("idle");
-      return;
-    }
-
-    if (!recRef.current) {
-      setStatus("unsupported");
-      setErrorMsg("Voice transcription is not supported in this browser. Use Chrome or Edge, or type your message.");
-      return;
-    }
-
-    setStatus("requesting");
-
-    // Diagnostic for information only
-    const d = await runDiagnostics();
-    setDiag(d);
-
-    // KEY CHANGE: we ALWAYS attempt, even if the state reading says DENIED.
-    // Some privacy browsers report wrong/stale states. Only the real attempt tells the truth.
-    try {
-      if (navigator.mediaDevices?.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach((t) => t.stop());
-      }
-    } catch (err: any) {
-      setStatus("error");
-      const name = err?.name || "UnknownError";
-      setErrorMsg(
-        name === "NotAllowedError" || name === "PermissionDeniedError"
-          ? "The browser really blocked the microphone this time. Fix: lock icon -> Site settings -> Microphone -> Allow -> then RELOAD the page. On Iron, check iron://settings/content/microphone and fully restart the browser."
-          : name === "NotFoundError" ? "No microphone found. Check your device."
-          : name === "NotReadableError" ? "Microphone is in use by another app."
-          : "Microphone error: " + name
-      );
-      return;
-    }
-
-    accRef.current = "";
-    try {
-      recRef.current.start();
-      setStatus("listening");
-    } catch {
-      setStatus("error");
-      setErrorMsg("Could not start transcription. This browser may not support it. Please type instead.");
-    }
-  };
-
-  if (supported === false) {
-    return (
-      <p className="text-xs text-slate-400 flex items-start gap-1.5">
-        <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-        Voice transcription is not available in this browser (iPhone/iPad and some privacy browsers). Please type your message, or use Chrome.
-      </p>
-    );
-  }
+  }, []);
 
   return (
-    <div className="space-y-2">
-      <button
-        type="button"
-        onClick={toggle}
-        disabled={disabled || status === "requesting"}
-        className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-full border text-sm font-medium transition-all ${
-          status === "listening" ? "bg-red-50 border-red-300 text-red-600" : "bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
-        } ${disabled || status === "requesting" ? "opacity-50 cursor-not-allowed" : ""}`}
-      >
-        {status === "requesting" ? <Loader2 className="w-4 h-4 animate-spin" />
-          : status === "listening" ? <Square className="w-4 h-4" />
-          : <Mic className="w-4 h-4" />}
-        {status === "requesting" ? "Trying microphone..."
-          : status === "listening" ? "Stop recording"
-          : "Speak instead of typing"}
-        {status === "listening" && <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />}
-      </button>
+    <div className="space-y-3">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={isRecording ? stopRecording : startRecording}
+          disabled={disabled || isTranscribing}
+          className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-full border text-sm font-medium transition-all ${
+            isRecording
+              ? 'bg-red-50 border-red-300 text-red-600 hover:bg-red-100'
+              : 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
+          } ${disabled || isTranscribing ? 'opacity-50 cursor-not-allowed' : ''}`}
+        >
+          {isTranscribing ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Transcribing...
+            </>
+          ) : isRecording ? (
+            <>
+              <Square className="w-4 h-4" />
+              Stop Recording
+            </>
+          ) : (
+            <>
+              <Mic className="w-4 h-4" />
+              Speak instead of typing
+            </>
+          )}
+          {isRecording && <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />}
+        </button>
+      </div>
 
-      {status === "listening" && (
-        <p className="text-xs text-red-500">Listening... speak naturally, your words appear in the box below.</p>
+      {/* Visualizer */}
+      {isRecording && (
+        <div className="relative">
+          <canvas
+            ref={canvasRef}
+            width={300}
+            height={60}
+            className="w-full h-16 rounded-lg bg-slate-100 border border-slate-200"
+          />
+        </div>
       )}
-      {status === "idle" && !errorMsg && (
-        <p className="text-xs text-slate-400">Your browser will ask for microphone access. It stays private.</p>
-      )}
-      {errorMsg && (
-        <p className="text-xs text-amber-600 flex items-start gap-1.5">
-          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-          {errorMsg}
+
+      {isRecording && (
+        <p className="text-xs text-red-500">
+          Listening... speak naturally, your words will appear below.
         </p>
       )}
-      {diag && (
-        <pre className="text-[11px] leading-relaxed text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-3 whitespace-pre-wrap font-mono">
-          {diag}
-        </pre>
+
+      {!isRecording && !isTranscribing && (
+        <p className="text-xs text-slate-400">
+          Click to record your message. Your voice will be transcribed automatically.
+        </p>
       )}
     </div>
   );

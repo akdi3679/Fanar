@@ -1,304 +1,276 @@
-"use client";
-import { useState, useEffect } from "react";
-import { Lock, Eye, EyeOff, Shield, Mail, Globe, AlertTriangle, Clock, LogOut, Inbox, Loader2 } from "lucide-react";
+import { db } from '@/lib/db';
+import { briefs, visitors, pageViews } from '@/drizzle/schema';
+import { desc, sql, eq } from 'drizzle-orm';
+import { Shield, Users, FileText, Globe, Clock, Monitor, Smartphone, TrendingUp, MessageSquare } from 'lucide-react';
 
-const MAX_ATTEMPTS = 5;
-const LOCK_MS = 5 * 60 * 1000;
-const LS_KEY = "fanar_admin_lockout";
+export default async function AdminDashboard() {
+  const [allBriefs, allVisitors, allPageViews] = await Promise.all([
+    db.select().from(briefs).orderBy(desc(briefs.createdAt)),
+    db.select().from(visitors).orderBy(desc(visitors.createdAt)),
+    db.select().from(pageViews).orderBy(desc(pageViews.createdAt)),
+  ]);
 
-export default function AdminPage() {
-  const [authed, setAuthed] = useState(false);
-  const [checking, setChecking] = useState(true);
-  const [code, setCode] = useState("");
-  const [show, setShow] = useState(false);
-  const [error, setError] = useState("");
-  const [attemptsLeft, setAttemptsLeft] = useState(MAX_ATTEMPTS);
-  const [lockedUntil, setLockedUntil] = useState(0);
-  const [now, setNow] = useState(() => Date.now());
-  const [briefs, setBriefs] = useState<any[]>([]);
-  const [visitors, setVisitors] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [dataState, setDataState] = useState<"idle" | "loading" | "ok" | "error">("idle");
-  const [dataError, setDataError] = useState("");
+  const totalBriefs = allBriefs.length;
+  const totalVisitors = allVisitors.length;
+  const totalPageViews = allPageViews.length;
+  
+  const uniqueSessions = new Set(allVisitors.map(v => v.sessionId).filter(Boolean));
+  const uniqueVisitors = uniqueSessions.size;
 
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
+  const deviceStats = allVisitors.reduce((acc, v) => {
+    const device = v.deviceType || 'unknown';
+    acc[device] = (acc[device] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(LS_KEY);
-      if (raw) {
-        const p = JSON.parse(raw);
-        if (p.lockedUntil > Date.now()) setLockedUntil(p.lockedUntil);
-        setAttemptsLeft(p.attemptsLeft ?? MAX_ATTEMPTS);
-      }
-    } catch {}
-  }, []);
+  const browserStats = allVisitors.reduce((acc, v) => {
+    const browser = v.browserName || 'Unknown';
+    acc[browser] = (acc[browser] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
 
-  const saveLockout = (attemptsLeft: number, lockedUntil: number) => {
-    try { localStorage.setItem(LS_KEY, JSON.stringify({ attemptsLeft, lockedUntil })); } catch {}
-  };
+  const countryStats = allVisitors.reduce((acc, v) => {
+    const country = v.country || 'Unknown';
+    acc[country] = (acc[country] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
 
-  const loadData = async () => {
-    setDataState("loading");
-    setDataError("");
-    try {
-      const res = await fetch("/api/admin/data", { credentials: "same-origin" });
-      if (res.ok) {
-        const json = await res.json();
-        setBriefs(json.briefs || []);
-        setVisitors(json.visitors || []);
-        setDataState("ok");
-      } else {
-        const j = await res.json().catch(() => ({}));
-        setDataState("error");
-        setDataError(j.error || "Failed to load data (" + res.status + ")");
-      }
-    } catch {
-      setDataState("error");
-      setDataError("Network error loading data.");
-    }
-  };
+  const avgTimeOnSite = allVisitors.length > 0
+    ? Math.round(allVisitors.reduce((sum, v) => sum + (v.timeOnSite || 0), 0) / allVisitors.length)
+    : 0;
 
-  useEffect(() => {
-    (async () => {
-      const res = await fetch("/api/admin/data", { credentials: "same-origin" }).catch(() => null);
-      if (res && res.ok) {
-        const json = await res.json();
-        setBriefs(json.briefs || []);
-        setVisitors(json.visitors || []);
-        setDataState("ok");
-        setAuthed(true);
-      }
-      setChecking(false);
-    })();
-  }, []);
+  const pageStats = allPageViews.reduce((acc, pv) => {
+    acc[pv.page] = (acc[pv.page] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+  const topPages = Object.entries(pageStats)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
 
-  const isLocked = lockedUntil > now;
-  const lockSecs = Math.max(0, Math.ceil((lockedUntil - now) / 1000));
-  const lockMin = Math.floor(lockSecs / 60);
-  const lockSec = lockSecs % 60;
+  const recentBriefs = allBriefs.slice(0, 10);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isLocked || loading) return;
-    setLoading(true);
-    setError("");
-    try {
-      const res = await fetch("/api/admin/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({ code }),
-      });
-      if (res.ok) {
-        localStorage.removeItem(LS_KEY);
-        setAttemptsLeft(MAX_ATTEMPTS);
-        setLockedUntil(0);
-        setAuthed(true);
-        loadData();
-      } else if (res.status === 429) {
-        const j = await res.json().catch(() => ({}));
-        const lu = Date.now() + (j.retryAfter || 300) * 1000;
-        setLockedUntil(lu);
-        setAttemptsLeft(0);
-        saveLockout(MAX_ATTEMPTS, lu);
-        setError(j.error || "Too many attempts. Access blocked.");
-      } else {
-        const j = await res.json().catch(() => ({}));
-        const left = j.attemptsLeft ?? Math.max(0, attemptsLeft - 1);
-        setAttemptsLeft(left);
-        if (left <= 0) {
-          const lu = Date.now() + LOCK_MS;
-          setLockedUntil(lu);
-          saveLockout(MAX_ATTEMPTS, lu);
-          setError("Too many attempts. Access blocked for 5 minutes.");
-        } else {
-          saveLockout(left, 0);
-          setError(j.error || "Wrong code. " + left + " attempt" + (left === 1 ? "" : "s") + " left.");
-        }
-      }
-    } catch {
-      setError("Network error. Try again.");
-    } finally {
-      setLoading(false);
-      setCode("");
-    }
-  };
+  return (
+    <div className="min-h-screen bg-slate-50 p-6">
+      <div className="max-w-7xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
+            <Shield className="w-8 h-8 text-blue-600" />
+            Admin Dashboard
+          </h1>
+          <p className="text-slate-600 mt-2">Complete overview of your site performance and leads</p>
+        </div>
 
-  const logout = async () => {
-    await fetch("/api/admin/logout", { method: "POST" }).catch(() => {});
-    setAuthed(false);
-    setBriefs([]);
-    setVisitors([]);
-    setDataState("idle");
-  };
-
-  if (checking) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
-      </div>
-    );
-  }
-
-  if (authed) {
-    const byCountry = visitors.reduce((acc: Record<string, number>, v) => {
-      acc[v.country || "?"] = (acc[v.country || "?"] || 0) + 1;
-      return acc;
-    }, {});
-    const topCountries = Object.entries(byCountry).sort((a, b) => b[1] - a[1]).slice(0, 10);
-
-    return (
-      <div className="min-h-screen bg-slate-50 p-6">
-        <div className="max-w-6xl mx-auto">
-          <div className="flex items-center justify-between mb-8">
-            <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-              <Shield className="w-6 h-6 text-blue-600" /> Fanar Admin
-            </h1>
-            <button onClick={logout} className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 text-sm">
-              <LogOut className="w-4 h-4" /> Log out
-            </button>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="bg-white rounded-2xl border border-slate-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <FileText className="w-8 h-8 text-blue-600" />
+              <span className="text-3xl font-bold text-slate-900">{totalBriefs}</span>
+            </div>
+            <p className="text-sm text-slate-600">Total Briefs</p>
           </div>
 
-          {dataState === "loading" && (
-            <div className="flex items-center gap-2 text-slate-500 mb-6">
-              <Loader2 className="w-4 h-4 animate-spin" /> Loading data...
+          <div className="bg-white rounded-2xl border border-slate-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <Users className="w-8 h-8 text-green-600" />
+              <span className="text-3xl font-bold text-slate-900">{uniqueVisitors}</span>
             </div>
-          )}
-          {dataState === "error" && (
-            <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm mb-6 flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4" /> {dataError}
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-            <div className="bg-white rounded-2xl border border-slate-200 p-5">
-              <div className="text-sm text-slate-500 mb-1">Total briefs</div>
-              <div className="text-3xl font-bold text-slate-900">{briefs.length}</div>
-            </div>
-            <div className="bg-white rounded-2xl border border-slate-200 p-5">
-              <div className="text-sm text-slate-500 mb-1">Tracked visitors</div>
-              <div className="text-3xl font-bold text-slate-900">{visitors.length}</div>
-            </div>
-            <div className="bg-white rounded-2xl border border-slate-200 p-5">
-              <div className="text-sm text-slate-500 mb-1">Countries</div>
-              <div className="text-3xl font-bold text-slate-900">{topCountries.length}</div>
-            </div>
+            <p className="text-sm text-slate-600">Unique Visitors</p>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6">
-              <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                <Inbox className="w-5 h-5 text-blue-600" /> Briefs ({briefs.length})
-              </h2>
-              <div className="space-y-3 max-h-[600px] overflow-y-auto">
-                {briefs.length === 0 && <p className="text-slate-400 text-sm">No briefs yet.</p>}
-                {briefs.map((b) => (
-                  <div key={b.id} className="p-4 rounded-xl border border-slate-100 bg-slate-50">
-                    <div className="flex justify-between items-start mb-2">
+          <div className="bg-white rounded-2xl border border-slate-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <TrendingUp className="w-8 h-8 text-purple-600" />
+              <span className="text-3xl font-bold text-slate-900">{totalPageViews}</span>
+            </div>
+            <p className="text-sm text-slate-600">Page Views</p>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <Clock className="w-8 h-8 text-orange-600" />
+              <span className="text-3xl font-bold text-slate-900">{avgTimeOnSite}s</span>
+            </div>
+            <p className="text-sm text-slate-600">Avg Time on Site</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6">
+            <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
+              <FileText className="w-5 h-5 text-blue-600" />
+              Recent Briefs ({totalBriefs})
+            </h2>
+            <div className="space-y-4 max-h-[600px] overflow-y-auto">
+              {recentBriefs.length === 0 ? (
+                <p className="text-slate-400 text-center py-8">No briefs yet</p>
+              ) : (
+                recentBriefs.map((brief) => (
+                  <div key={brief.id} className="border border-slate-100 rounded-xl p-4 hover:border-blue-200 transition-colors">
+                    <div className="flex items-start justify-between mb-2">
                       <div>
-                        <div className="font-semibold text-slate-900">{b.name}</div>
-                        <div className="text-sm text-blue-600 flex items-center gap-1"><Mail className="w-3.5 h-3.5" />{b.email}</div>
-                        {b.phone && <div className="text-xs text-slate-500">{b.phone}</div>}
+                        <h3 className="font-semibold text-slate-900">{brief.name}</h3>
+                        <p className="text-sm text-blue-600">{brief.email}</p>
+                        {brief.phone && <p className="text-xs text-slate-500">{brief.phone}</p>}
                       </div>
-                      <span className="text-xs text-slate-400">{new Date(b.createdAt).toLocaleDateString()}</span>
+                      <span className="text-xs text-slate-400">
+                        {new Date(brief.createdAt).toLocaleDateString()}
+                      </span>
                     </div>
-                    {b.businessName && <div className="text-sm text-slate-700"><b>{b.businessName}</b>{b.businessType ? " - " + b.businessType : ""}</div>}
-                    <p className="text-sm text-slate-600 mt-1">{b.business}</p>
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {b.goal && <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">{b.goal}</span>}
-                      {b.budget && <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs">{b.budget}</span>}
-                      {b.timeline && <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-xs">{b.timeline}</span>}
-                      <span className="px-2 py-0.5 bg-slate-200 text-slate-600 rounded text-xs">{b.country}</span>
+                    
+                    {brief.businessName && (
+                      <p className="text-sm font-medium text-slate-700 mb-1">
+                        {brief.businessName} {brief.businessType && `(${brief.businessType})`}
+                      </p>
+                    )}
+                    
+                    {brief.businessDescription && (
+                      <p className="text-sm text-slate-600 mb-2 line-clamp-2">
+                        {brief.businessDescription}
+                      </p>
+                    )}
+
+                    {/* QUESTIONNAIRE ANSWERS */}
+                    {brief.questionnaire && (
+                      <div className="mt-3 pt-3 border-t border-slate-100">
+                        <p className="text-xs font-semibold text-slate-700 mb-2 flex items-center gap-1">
+                          <MessageSquare className="w-3 h-3" />
+                          Questionnaire Answers:
+                        </p>
+                        <div className="space-y-1 text-xs">
+                          {brief.questionnaire.q1 && (
+                            <p className="text-slate-600">
+                              <span className="font-medium">Q1:</span> {brief.questionnaire.q1}
+                            </p>
+                          )}
+                          {brief.questionnaire.q2 && (
+                            <p className="text-slate-600">
+                              <span className="font-medium">Q2:</span> {brief.questionnaire.q2}
+                            </p>
+                          )}
+                          {brief.questionnaire.q3 && (
+                            <p className="text-slate-600">
+                              <span className="font-medium">Q3:</span> {brief.questionnaire.q3}
+                            </p>
+                          )}
+                          {brief.questionnaire.goal && (
+                            <p className="text-slate-600">
+                              <span className="font-medium">Goal:</span> {brief.questionnaire.goal}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {brief.projectType && (
+                        <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs">
+                          {brief.projectType}
+                        </span>
+                      )}
+                      {brief.budget && (
+                        <span className="px-2 py-1 bg-green-50 text-green-700 rounded text-xs">
+                          {brief.budget}
+                        </span>
+                      )}
+                      {brief.timeline && (
+                        <span className="px-2 py-1 bg-purple-50 text-purple-700 rounded text-xs">
+                          {brief.timeline}
+                        </span>
+                      )}
+                      {brief.country && brief.country !== 'Unknown' && (
+                        <span className="px-2 py-1 bg-slate-100 text-slate-700 rounded text-xs">
+                          {brief.country}
+                        </span>
+                      )}
                     </div>
+
+                    <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-4 text-xs text-slate-500">
+                      <span className="flex items-center gap-1">
+                        <Monitor className="w-3 h-3" />
+                        {brief.browserName} {brief.osName}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Smartphone className="w-3 h-3" />
+                        {brief.deviceType}
+                      </span>
+                      {brief.timeOnSite && (
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {brief.timeOnSite}s on site
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="bg-white rounded-2xl border border-slate-200 p-6">
+              <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                <Monitor className="w-5 h-5 text-slate-600" />
+                Devices
+              </h3>
+              <div className="space-y-3">
+                {Object.entries(deviceStats).map(([device, count]) => (
+                  <div key={device} className="flex items-center justify-between">
+                    <span className="text-sm text-slate-600 capitalize">{device}</span>
+                    <span className="text-sm font-semibold text-slate-900">{count}</span>
                   </div>
                 ))}
               </div>
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-200 p-6">
-              <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                <Globe className="w-5 h-5 text-green-600" /> Visitors by country
-              </h2>
-              <div className="space-y-2">
-                {topCountries.length === 0 && <p className="text-slate-400 text-sm">No visitors yet.</p>}
-                {topCountries.map(([c, n]) => (
-                  <div key={c} className="flex items-center justify-between text-sm">
-                    <span className="text-slate-700">{c}</span>
-                    <div className="flex items-center gap-2">
-                      <div className="h-1.5 bg-green-100 rounded-full overflow-hidden w-28">
-                        <div className="h-full bg-green-500" style={{ width: Math.min(100, n * 8) + "%" }} />
-                      </div>
-                      <span className="text-slate-400 w-8 text-right">{n}</span>
+              <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                <Globe className="w-5 h-5 text-slate-600" />
+                Browsers
+              </h3>
+              <div className="space-y-3">
+                {Object.entries(browserStats)
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, 5)
+                  .map(([browser, count]) => (
+                    <div key={browser} className="flex items-center justify-between">
+                      <span className="text-sm text-slate-600">{browser}</span>
+                      <span className="text-sm font-semibold text-slate-900">{count}</span>
                     </div>
+                  ))}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 p-6">
+              <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                <Globe className="w-5 h-5 text-slate-600" />
+                Top Countries
+              </h3>
+              <div className="space-y-3">
+                {Object.entries(countryStats)
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, 5)
+                  .map(([country, count]) => (
+                    <div key={country} className="flex items-center justify-between">
+                      <span className="text-sm text-slate-600">{country}</span>
+                      <span className="text-sm font-semibold text-slate-900">{count}</span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 p-6">
+              <h3 className="font-bold text-slate-900 mb-4">Top Pages</h3>
+              <div className="space-y-3">
+                {topPages.map(([page, count]) => (
+                  <div key={page} className="flex items-center justify-between">
+                    <span className="text-sm text-slate-600 truncate max-w-[150px]">{page}</span>
+                    <span className="text-sm font-semibold text-slate-900">{count}</span>
                   </div>
                 ))}
               </div>
             </div>
           </div>
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-white p-6">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-blue-600 flex items-center justify-center mx-auto mb-4">
-            <Lock className="w-7 h-7 text-white" />
-          </div>
-          <h1 className="text-2xl font-bold text-slate-900">Admin access</h1>
-          <p className="text-slate-500 text-sm mt-1">Enter your access code.</p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
-          {isLocked ? (
-            <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-center">
-              <AlertTriangle className="w-6 h-6 text-red-500 mx-auto mb-2" />
-              <p className="text-sm font-medium text-red-700">Access blocked</p>
-              <p className="text-xs text-red-600 mt-1 flex items-center justify-center gap-1">
-                <Clock className="w-3.5 h-3.5" /> Try again in {lockMin}:{String(lockSec).padStart(2, "0")}
-              </p>
-            </div>
-          ) : (
-            <>
-              <div className="relative">
-                <input
-                  type={show ? "text" : "password"}
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  placeholder="Access code"
-                  autoFocus
-                  className="w-full px-4 py-3.5 pr-12 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                />
-                <button type="button" onClick={() => setShow(!show)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                  {show ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                </button>
-              </div>
-
-              {error && (
-                <p className="text-sm text-red-600 flex items-start gap-1.5">
-                  <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" /> {error}
-                </p>
-              )}
-
-              <button
-                type="submit"
-                disabled={loading || !code}
-                className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                {loading ? "Checking..." : "Enter"}
-              </button>
-
-              <p className="text-xs text-slate-400 text-center">{attemptsLeft} of {MAX_ATTEMPTS} attempts remaining</p>
-            </>
-          )}
-        </form>
       </div>
     </div>
   );
