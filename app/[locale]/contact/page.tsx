@@ -3,14 +3,13 @@
 import { useState, useEffect } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { useRouter } from "next/navigation";
-import { Send, CheckCircle2, Loader2, Lock, Info, Mic, Square, Upload } from "lucide-react";
+import { Send, CheckCircle2, Loader2, Lock, Info } from "lucide-react";
 import { QualificationWizard, type QualificationAnswers } from "@/components/contact/QualificationWizard";
 import { AudioRecorder } from "@/components/contact/AudioRecorder";
 import { TextBlurIn } from "@/components/ui/TextBlurIn";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 
-// ONE word per language
 const greetingMap: Record<string, string> = {
   fr: "Bonjour",
   en: "Hello",
@@ -30,17 +29,16 @@ export default function ContactPage() {
   const [qualification, setQualification] = useState<QualificationAnswers | null>(null);
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
-  const [audioDuration, setAudioDuration] = useState(0);
 
-  // Greeting: blur-in → stay 1.5s → fade-out → wizard
+  // Greeting: blur-in -> stay 1.8s -> fade-out 0.5s -> wizard
   useEffect(() => {
     if (stage === "greeting") {
-      const stayTimer = setTimeout(() => setStage("fading"), 1800);
-      return () => clearTimeout(stayTimer);
+      const stay = setTimeout(() => setStage("fading"), 1800);
+      return () => clearTimeout(stay);
     }
     if (stage === "fading") {
-      const fadeTimer = setTimeout(() => setStage("qualify"), 600);
-      return () => clearTimeout(fadeTimer);
+      const fade = setTimeout(() => setStage("qualify"), 500);
+      return () => clearTimeout(fade);
     }
   }, [stage]);
 
@@ -71,19 +69,18 @@ export default function ContactPage() {
     setStage("form");
   };
 
-  const handleAudioRecorded = (blob: Blob, durationSec: number) => {
+  const handleAudioRecorded = (blob: Blob, _durationSec: number) => {
     setAudioBlob(blob);
-    setAudioDuration(durationSec);
   };
 
   const removeAudio = () => {
     setAudioBlob(null);
-    setAudioDuration(0);
   };
 
-  // Require: name + email + (text description OR audio)
   const hasMessage = form.business.trim().length >= 5 || audioBlob !== null;
-  const canSubmit = form.name.trim().length >= 2 && /\S+@\S+\.\S+/.test(form.email) && hasMessage && !submitting;
+  const nameOk = form.name.trim().length >= 2;
+  const emailOk = /\S+@\S+\.\S+/.test(form.email);
+  const canSubmit = nameOk && emailOk && hasMessage && !submitting;
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,7 +89,6 @@ export default function ContactPage() {
 
     try {
       const formData = new FormData();
-      // Text fields
       formData.append("name", form.name);
       formData.append("email", form.email);
       if (form.phone) formData.append("phone", form.phone);
@@ -105,7 +101,6 @@ export default function ContactPage() {
       formData.append("language", locale);
       formData.append("questionnaire", JSON.stringify(qualification || {}));
 
-      // Audio file if recorded
       if (audioBlob) {
         formData.append("audio", audioBlob, `voice-${Date.now()}.webm`);
       }
@@ -114,13 +109,13 @@ export default function ContactPage() {
       if (!res.ok) throw new Error("Failed to submit");
 
       setToast({ type: "success", message: t("toastSuccess") });
+      // Clear form but STAY on form stage
       setForm({
         name: "", email: "", phone: "",
         businessName: "", businessType: "", oldWebsite: "",
         business: "", goal: "", timeline: "", budget: "",
       });
       setAudioBlob(null);
-      setAudioDuration(0);
       setQualification(null);
     } catch {
       setStage("error");
@@ -151,7 +146,7 @@ export default function ContactPage() {
       )}
 
       <main className="max-w-3xl mx-auto px-6 py-12">
-        {/* STAGE: Single-word morphing greeting (blur-in → sharp → fade-out) */}
+        {/* STAGE: Single-word greeting (blur-in -> sharp -> fade-out) */}
         {(stage === "greeting" || stage === "fading") && (
           <div
             className="min-h-[60vh] flex items-center justify-center transition-opacity duration-500"
@@ -190,16 +185,19 @@ export default function ContactPage() {
 
             <form onSubmit={onSubmit} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-6">
               <fieldset disabled={submitting} className="space-y-6">
+                {/* About You */}
                 <div className="space-y-4">
                   <h2 className="text-lg font-semibold text-slate-900">{t("sectionYou")}</h2>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1.5">{t("name")} <span className="text-red-500">*</span></label>
                     <input required value={form.name} onChange={(e) => update("name", e.target.value)} placeholder={t("namePlaceholder")} className={inputClass} autoComplete="name" />
+                    {form.name.length > 0 && !nameOk && <p className="text-xs text-red-500 mt-1">{t("valName")}</p>}
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1.5">{t("email")} <span className="text-red-500">*</span></label>
                       <input required type="email" value={form.email} onChange={(e) => update("email", e.target.value)} placeholder={t("emailPlaceholder")} className={inputClass} autoComplete="email" />
+                      {form.email.length > 0 && !emailOk && <p className="text-xs text-red-500 mt-1">{t("valEmail")}</p>}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1.5">{t("phone")}</label>
@@ -208,6 +206,7 @@ export default function ContactPage() {
                   </div>
                 </div>
 
+                {/* Business */}
                 <div className="space-y-4 pt-4 border-t border-slate-100">
                   <h2 className="text-lg font-semibold text-slate-900">{t("sectionBusiness")}</h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -233,35 +232,19 @@ export default function ContactPage() {
                   </div>
                 </div>
 
-                {/* Project: TEXT or VOICE (or both) */}
+                {/* Project: text or voice (or both) */}
                 <div className="space-y-4 pt-4 border-t border-slate-100">
                   <h2 className="text-lg font-semibold text-slate-900">{t("sectionProject")}</h2>
                   <p className="text-sm text-slate-500">{t("messageChoice")}</p>
 
-                  {/* Audio recorder with sound visualizer */}
+                  {/* ONE pill — the only place recording UI lives */}
                   <AudioRecorder
                     onRecordingComplete={handleAudioRecorded}
+                    onRemove={removeAudio}
                     disabled={submitting}
                   />
 
-                  {/* Show recorded audio chip */}
-                  {audioBlob && (
-                    <div className="flex items-center gap-3 px-4 py-3 bg-green-50 border border-green-200 rounded-xl">
-                      <Mic className="w-4 h-4 text-green-600" />
-                      <span className="text-sm text-green-800 font-medium">
-                        Voice recorded ({audioDuration.toFixed(1)}s)
-                      </span>
-                      <button
-                        type="button"
-                        onClick={removeAudio}
-                        className="ml-auto text-xs text-green-700 hover:text-red-600 underline"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Text area (optional if audio is recorded) */}
+                  {/* Text area */}
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
                       {t("businessDescription")} {audioBlob ? "" : <span className="text-red-500">*</span>}
@@ -278,6 +261,7 @@ export default function ContactPage() {
                   </div>
                 </div>
 
+                {/* Timeline & Payment */}
                 <div className="space-y-4 pt-4 border-t border-slate-100">
                   <h2 className="text-lg font-semibold text-slate-900">{t("sectionTimeline")}</h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -321,8 +305,8 @@ export default function ContactPage() {
                 disabled={!canSubmit}
                 className="w-full flex items-center justify-center gap-2 px-8 py-4 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
-                {submitting ? t("submitting") : (audioBlob ? t("submitWithVoice") : t("submit"))}
+                {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                {submitting ? t("submitting") : t("submit")}
               </button>
 
               <p className="text-xs text-slate-500 text-center flex items-center justify-center gap-1.5">
