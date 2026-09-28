@@ -212,7 +212,7 @@ export default function ContactPage() {
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">{t("businessDescription")} <span className="text-red-500">*</span></label>
                     <div className="mb-4">
-                      <AudioRecorder onTranscript={handleTranscript} locale={locale} disabled={submitting} />
+                      <AudioRecorder onTranscript={handleTranscript} disabled={submitting} />
                     </div>
                     <textarea
                       required
