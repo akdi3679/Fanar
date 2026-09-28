@@ -1,13 +1,10 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Lock, Eye, EyeOff, Shield, Mail, Globe, Users, AlertTriangle, Clock, LogOut, Inbox } from "lucide-react";
+import { Lock, Eye, EyeOff, Shield, Mail, Globe, AlertTriangle, Clock, LogOut, Inbox, Loader2 } from "lucide-react";
 
 const MAX_ATTEMPTS = 5;
 const LOCK_MS = 5 * 60 * 1000;
 const LS_KEY = "fanar_admin_lockout";
-
-type Brief = any;
-type Visitor = any;
 
 export default function AdminPage() {
   const [authed, setAuthed] = useState(false);
@@ -18,17 +15,17 @@ export default function AdminPage() {
   const [attemptsLeft, setAttemptsLeft] = useState(MAX_ATTEMPTS);
   const [lockedUntil, setLockedUntil] = useState(0);
   const [now, setNow] = useState(() => Date.now());
-  const [briefs, setBriefs] = useState<Brief[]>([]);
-  const [visitors, setVisitors] = useState<Visitor[]>([]);
+  const [briefs, setBriefs] = useState<any[]>([]);
+  const [visitors, setVisitors] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [dataState, setDataState] = useState<"idle" | "loading" | "ok" | "error">("idle");
+  const [dataError, setDataError] = useState("");
 
-  // ticking clock for countdown
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
 
-  // restore lockout from localStorage
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LS_KEY);
@@ -45,23 +42,36 @@ export default function AdminPage() {
   };
 
   const loadData = async () => {
+    setDataState("loading");
+    setDataError("");
     try {
-      const res = await fetch("/api/admin/data");
+      const res = await fetch("/api/admin/data", { credentials: "same-origin" });
       if (res.ok) {
         const json = await res.json();
         setBriefs(json.briefs || []);
         setVisitors(json.visitors || []);
-        setAuthed(true);
-        return true;
+        setDataState("ok");
+      } else {
+        const j = await res.json().catch(() => ({}));
+        setDataState("error");
+        setDataError(j.error || `Failed to load data (${res.status})`);
       }
-    } catch {}
-    return false;
+    } catch {
+      setDataState("error");
+      setDataError("Network error loading data.");
+    }
   };
 
-  // check existing session on mount
   useEffect(() => {
     (async () => {
-      await loadData();
+      const res = await fetch("/api/admin/data", { credentials: "same-origin" }).catch(() => null);
+      if (res && res.ok) {
+        const json = await res.json();
+        setBriefs(json.briefs || []);
+        setVisitors(json.visitors || []);
+        setDataState("ok");
+        setAuthed(true);
+      }
       setChecking(false);
     })();
   }, []);
@@ -80,13 +90,15 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
         body: JSON.stringify({ code }),
       });
       if (res.ok) {
         localStorage.removeItem(LS_KEY);
         setAttemptsLeft(MAX_ATTEMPTS);
         setLockedUntil(0);
-        await loadData();
+        setAuthed(true);   // show dashboard right away
+        loadData();         // load data in background
       } else if (res.status === 429) {
         const j = await res.json().catch(() => ({}));
         const lu = Date.now() + (j.retryAfter || 300) * 1000;
@@ -105,7 +117,7 @@ export default function AdminPage() {
           setError("Too many attempts. Access blocked for 5 minutes.");
         } else {
           saveLockout(left, 0);
-          setError(`Wrong code. ${left} attempt${left === 1 ? "" : "s"} left.`);
+          setError(j.error || `Wrong code. ${left} attempt${left === 1 ? "" : "s"} left.`);
         }
       }
     } catch {
@@ -121,17 +133,17 @@ export default function AdminPage() {
     setAuthed(false);
     setBriefs([]);
     setVisitors([]);
+    setDataState("idle");
   };
 
   if (checking) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <p className="text-slate-400">Checking…</p>
+        <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
       </div>
     );
   }
 
-  // ---- DASHBOARD ----
   if (authed) {
     const byCountry = visitors.reduce((acc: Record<string, number>, v) => {
       acc[v.country || "?"] = (acc[v.country || "?"] || 0) + 1;
@@ -150,6 +162,17 @@ export default function AdminPage() {
               <LogOut className="w-4 h-4" /> Log out
             </button>
           </div>
+
+          {dataState === "loading" && (
+            <div className="flex items-center gap-2 text-slate-500 mb-6">
+              <Loader2 className="w-4 h-4 animate-spin" /> Loading data...
+            </div>
+          )}
+          {dataState === "error" && (
+            <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm mb-6 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4" /> {dataError}
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
             <div className="bg-white rounded-2xl border border-slate-200 p-5">
@@ -183,8 +206,8 @@ export default function AdminPage() {
                       </div>
                       <span className="text-xs text-slate-400">{new Date(b.createdAt).toLocaleDateString()}</span>
                     </div>
-                    {b.businessName && <div className="text-sm text-slate-700"><b>{b.businessName}</b>{b.businessType ? ` · ${b.businessType}` : ""}</div>}
-                    <p className="text-sm text-slate-600 mt-1 line-clamp-3">{b.business}</p>
+                    {b.businessName && <div className="text-sm text-slate-700"><b>{b.businessName}</b>{b.businessType ? ` - ${b.businessType}` : ""}</div>}
+                    <p className="text-sm text-slate-600 mt-1">{b.business}</p>
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       {b.goal && <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">{b.goal}</span>}
                       {b.budget && <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs">{b.budget}</span>}
@@ -201,6 +224,7 @@ export default function AdminPage() {
                 <Globe className="w-5 h-5 text-green-600" /> Visitors by country
               </h2>
               <div className="space-y-2">
+                {topCountries.length === 0 && <p className="text-slate-400 text-sm">No visitors yet.</p>}
                 {topCountries.map(([c, n]) => (
                   <div key={c} className="flex items-center justify-between text-sm">
                     <span className="text-slate-700">{c}</span>
@@ -220,7 +244,6 @@ export default function AdminPage() {
     );
   }
 
-  // ---- CODE ENTRY ----
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-white p-6">
       <div className="w-full max-w-sm">
@@ -268,12 +291,11 @@ export default function AdminPage() {
                 disabled={loading || !code}
                 className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? "Checking…" : "Enter"}
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                {loading ? "Checking..." : "Enter"}
               </button>
 
-              <p className="text-xs text-slate-400 text-center">
-                {attemptsLeft} of {MAX_ATTEMPTS} attempts remaining
-              </p>
+              <p className="text-xs text-slate-400 text-center">{attemptsLeft} of {MAX_ATTEMPTS} attempts remaining</p>
             </>
           )}
         </form>
