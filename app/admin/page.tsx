@@ -3,6 +3,9 @@ import { briefs, visitors, pageViews } from '@/drizzle/schema';
 import { desc } from 'drizzle-orm';
 import { Shield, Users, FileText, Globe, Clock, Monitor, Smartphone, TrendingUp, MessageSquare } from 'lucide-react';
 
+// Force dynamic rendering to prevent build-time database queries
+export const dynamic = 'force-dynamic';
+
 export default async function AdminDashboard() {
   if (!db) {
     return (
