@@ -1,7 +1,7 @@
-import { pgTable, serial, text, timestamp, integer, boolean, json } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, varchar, boolean, json, integer } from 'drizzle-orm/pg-core';
 
 export const briefs = pgTable('briefs', {
-  id: serial('id').primaryKey(),
+  id: varchar('id', { length: 36 }).primaryKey().$defaultFn(() => crypto.randomUUID()),
   name: text('name').notNull(),
   email: text('email').notNull(),
   phone: text('phone'),
@@ -12,11 +12,7 @@ export const briefs = pgTable('briefs', {
   budget: text('budget'),
   timeline: text('timeline'),
   language: text('language'),
-  
-  // QUESTIONNAIRE ANSWERS
   questionnaire: json('questionnaire'),
-  
-  // Visitor context
   userAgent: text('user_agent'),
   ipAddress: text('ip_address'),
   country: text('country'),
@@ -29,12 +25,11 @@ export const briefs = pgTable('briefs', {
   osName: text('os_name'),
   screenWidth: integer('screen_width'),
   screenHeight: integer('screen_height'),
-  
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
 export const visitors = pgTable('visitors', {
-  id: serial('id').primaryKey(),
+  id: varchar('id', { length: 36 }).primaryKey().$defaultFn(() => crypto.randomUUID()),
   sessionId: text('session_id'),
   userAgent: text('user_agent'),
   ipAddress: text('ip_address'),
@@ -63,9 +58,9 @@ export const visitors = pgTable('visitors', {
 });
 
 export const pageViews = pgTable('page_views', {
-  id: serial('id').primaryKey(),
+  id: varchar('id', { length: 36 }).primaryKey().$defaultFn(() => crypto.randomUUID()),
   sessionId: text('session_id').notNull(),
-  visitorId: integer('visitor_id').references(() => visitors.id),
+  visitorId: varchar('visitor_id', { length: 36 }).references(() => visitors.id),
   page: text('page').notNull(),
   referrer: text('referrer'),
   timeOnPage: integer('time_on_page'),
