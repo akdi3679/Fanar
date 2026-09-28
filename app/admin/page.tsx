@@ -54,7 +54,7 @@ export default function AdminPage() {
       } else {
         const j = await res.json().catch(() => ({}));
         setDataState("error");
-        setDataError(j.error || `Failed to load data (${res.status})`);
+        setDataError(j.error || "Failed to load data (" + res.status + ")");
       }
     } catch {
       setDataState("error");
@@ -97,8 +97,8 @@ export default function AdminPage() {
         localStorage.removeItem(LS_KEY);
         setAttemptsLeft(MAX_ATTEMPTS);
         setLockedUntil(0);
-        setAuthed(true);   // show dashboard right away
-        loadData();         // load data in background
+        setAuthed(true);
+        loadData();
       } else if (res.status === 429) {
         const j = await res.json().catch(() => ({}));
         const lu = Date.now() + (j.retryAfter || 300) * 1000;
@@ -117,7 +117,7 @@ export default function AdminPage() {
           setError("Too many attempts. Access blocked for 5 minutes.");
         } else {
           saveLockout(left, 0);
-          setError(j.error || `Wrong code. ${left} attempt${left === 1 ? "" : "s"} left.`);
+          setError(j.error || "Wrong code. " + left + " attempt" + (left === 1 ? "" : "s") + " left.");
         }
       }
     } catch {
@@ -206,7 +206,7 @@ export default function AdminPage() {
                       </div>
                       <span className="text-xs text-slate-400">{new Date(b.createdAt).toLocaleDateString()}</span>
                     </div>
-                    {b.businessName && <div className="text-sm text-slate-700"><b>{b.businessName}</b>{b.businessType ? ` - ${b.businessType}` : ""}</div>}
+                    {b.businessName && <div className="text-sm text-slate-700"><b>{b.businessName}</b>{b.businessType ? " - " + b.businessType : ""}</div>}
                     <p className="text-sm text-slate-600 mt-1">{b.business}</p>
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       {b.goal && <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">{b.goal}</span>}
@@ -230,7 +230,7 @@ export default function AdminPage() {
                     <span className="text-slate-700">{c}</span>
                     <div className="flex items-center gap-2">
                       <div className="h-1.5 bg-green-100 rounded-full overflow-hidden w-28">
-                        <div className="h-full bg-green-500" style={{ width: `${Math.min(100, n * 8)}%` }} />
+                        <div className="h-full bg-green-500" style={{ width: Math.min(100, n * 8) + "%" }} />
                       </div>
                       <span className="text-slate-400 w-8 text-right">{n}</span>
                     </div>

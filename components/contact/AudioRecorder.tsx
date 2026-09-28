@@ -7,14 +7,13 @@ interface Props {
   locale: string;
   disabled?: boolean;
 }
-const langMap: Record<string, string> = {
-  fr: "fr-FR", en: "en-US", ar: "ar-SA", es: "es-ES", de: "de-DE",
-};
+const langMap: Record<string, string> = { fr: "fr-FR", en: "en-US", ar: "ar-SA", es: "es-ES", de: "de-DE" };
 type Status = "idle" | "requesting" | "listening" | "error" | "unsupported";
 
 export function AudioRecorder({ onTranscript, locale, disabled }: Props) {
   const [status, setStatus] = useState<Status>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [diag, setDiag] = useState<string | null>(null);
   const [supported, setSupported] = useState<boolean | null>(null);
   const recRef = useRef<any>(null);
   const accRef = useRef("");
@@ -42,11 +41,11 @@ export function AudioRecorder({ onTranscript, locale, disabled }: Props) {
       setStatus("error");
       setErrorMsg(
         e.error === "not-allowed" || e.error === "service-not-allowed"
-          ? "Microphone blocked. Click the lock icon in the address bar, allow the microphone, then try again."
+          ? "Microphone blocked by the browser. See the diagnosis box below."
           : e.error === "no-speech" ? "No speech detected. Try again and speak clearly."
-          : e.error === "audio-capture" ? "No microphone found. Check your device."
-          : e.error === "network" ? "Speech service needs network access. This browser may not support transcription."
-          : "Voice input failed. Please type instead."
+          : e.error === "audio-capture" ? "No microphone found."
+          : e.error === "network" ? "Speech service needs network. This browser may not support transcription."
+          : "Voice input failed: " + e.error
       );
     };
     rec.onend = () => setStatus((s) => (s === "listening" ? "idle" : s));
@@ -54,18 +53,33 @@ export function AudioRecorder({ onTranscript, locale, disabled }: Props) {
     return () => { try { rec.stop(); } catch {} };
   }, [locale, onTranscript]);
 
+  const runDiagnostics = async (): Promise<string> => {
+    const lines: string[] = [];
+    lines.push("Secure context (HTTPS): " + (window.isSecureContext ? "YES" : "NO (mic needs HTTPS)"));
+    lines.push("mediaDevices API: " + (navigator.mediaDevices ? "present" : "MISSING"));
+    try {
+      if (navigator.permissions?.query) {
+        const p = await navigator.permissions.query({ name: "microphone" as PermissionName });
+        lines.push("Mic permission state: " + p.state.toUpperCase());
+        if (p.state === "denied") {
+          lines.push(">> PERMISSION IS DENIED. Click the lock/site icon in the address bar -> Site settings -> Microphone -> set to Allow, then reload.");
+        }
+      } else {
+        lines.push("permissions.query not supported here");
+      }
+    } catch {
+      lines.push("could not read permission state");
+    }
+    return lines.join("\n");
+  };
+
   const toggle = async () => {
     setErrorMsg(null);
+    setDiag(null);
 
     if (status === "listening") {
       recRef.current?.stop();
       setStatus("idle");
-      return;
-    }
-
-    if (typeof window !== "undefined" && !window.isSecureContext) {
-      setStatus("error");
-      setErrorMsg("Voice input requires HTTPS.");
       return;
     }
 
@@ -75,21 +89,36 @@ export function AudioRecorder({ onTranscript, locale, disabled }: Props) {
       return;
     }
 
-    // KEY FIX: explicitly request the microphone. THIS is what triggers the browser prompt.
     setStatus("requesting");
+
+    // Run diagnostics first so we know exactly what's happening
+    const d = await runDiagnostics();
+    setDiag(d);
+
+    // If permission already denied, don't even try — tell the user how to fix it
+    if (d.includes("DENIED")) {
+      setStatus("error");
+      setErrorMsg("Microphone permission is DENIED in your browser. Follow the instruction in the diagnosis box, then reload the page.");
+      return;
+    }
+
     try {
       if (navigator.mediaDevices?.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach((t) => t.stop()); // just needed the permission grant
+        stream.getTracks().forEach((t) => t.stop());
       }
     } catch (err: any) {
       setStatus("error");
+      const name = err?.name || "UnknownError";
       setErrorMsg(
-        err?.name === "NotAllowedError" || err?.name === "PermissionDeniedError"
-          ? "Microphone permission denied. Click the lock icon in the address bar, allow the microphone, then retry."
-          : err?.name === "NotFoundError" ? "No microphone found. Check your device."
-          : "Could not access the microphone. Please type instead."
+        name === "NotAllowedError" || name === "PermissionDeniedError"
+          ? "The browser refused microphone access. Check the diagnosis box for the exact reason."
+          : name === "NotFoundError" ? "No microphone found."
+          : name === "NotReadableError" ? "Microphone is in use by another app."
+          : "Microphone error: " + name
       );
+      const d2 = await runDiagnostics();
+      setDiag(d2);
       return;
     }
 
@@ -99,7 +128,7 @@ export function AudioRecorder({ onTranscript, locale, disabled }: Props) {
       setStatus("listening");
     } catch {
       setStatus("error");
-      setErrorMsg("Could not start voice input. This browser may not support transcription. Please type instead.");
+      setErrorMsg("Could not start transcription. This browser may not support it. Please type instead.");
     }
   };
 
@@ -125,11 +154,12 @@ export function AudioRecorder({ onTranscript, locale, disabled }: Props) {
         {status === "requesting" ? <Loader2 className="w-4 h-4 animate-spin" />
           : status === "listening" ? <Square className="w-4 h-4" />
           : <Mic className="w-4 h-4" />}
-        {status === "requesting" ? "Requesting microphone..."
+        {status === "requesting" ? "Checking microphone..."
           : status === "listening" ? "Stop recording"
           : "Speak instead of typing"}
         {status === "listening" && <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />}
       </button>
+
       {status === "listening" && (
         <p className="text-xs text-red-500">Listening... speak naturally, your words appear in the box below.</p>
       )}
@@ -141,6 +171,11 @@ export function AudioRecorder({ onTranscript, locale, disabled }: Props) {
           <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
           {errorMsg}
         </p>
+      )}
+      {diag && (
+        <pre className="text-[11px] leading-relaxed text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-3 whitespace-pre-wrap font-mono">
+          {diag}
+        </pre>
       )}
     </div>
   );

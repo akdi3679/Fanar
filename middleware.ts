@@ -4,8 +4,6 @@ import { routing } from "./i18n/routing";
 
 const intlMiddleware = createMiddleware(routing);
 
-// EDIT THIS MAP: ISO country code -> locale.
-// Tunisia (TN) is set to Arabic. To prefer French instead, change TN: "ar" to TN: "fr".
 const countryToLocale: Record<string, string> = {
   TN: "ar", DZ: "ar", MA: "ar", EG: "ar", SA: "ar", AE: "ar", QA: "ar", KW: "ar",
   OM: "ar", BH: "ar", JO: "ar", LB: "ar", SY: "ar", IQ: "ar", YE: "ar", LY: "ar", PS: "ar",
@@ -20,17 +18,21 @@ const countryToLocale: Record<string, string> = {
 export default function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Never touch /admin or /api/admin
+  if (pathname.startsWith("/admin") || pathname.startsWith("/api/admin")) {
+    return NextResponse.next();
+  }
+
   const hasLocaleCookie = request.cookies.has("NEXT_LOCALE");
   const country = request.headers.get("x-vercel-ip-country");
   const geoLocale = country ? countryToLocale[country] : undefined;
 
   const locales = routing.locales as readonly string[];
-  const pathHasLocale = locales.some((l) => pathname === `/${l}` || pathname.startsWith(`/${l}/`));
+  const pathHasLocale = locales.some((l) => pathname === "/" + l || pathname.startsWith("/" + l + "/"));
 
-  // First visit (no saved choice) + known country + path has no locale yet -> redirect
   if (!hasLocaleCookie && geoLocale && locales.includes(geoLocale) && !pathHasLocale) {
     const url = request.nextUrl.clone();
-    url.pathname = `/${geoLocale}${pathname === "/" ? "" : pathname}`;
+    url.pathname = "/" + geoLocale + (pathname === "/" ? "" : pathname);
     const response = NextResponse.redirect(url);
     response.cookies.set("NEXT_LOCALE", geoLocale, { path: "/", maxAge: 60 * 60 * 24 * 365 });
     return response;
@@ -40,6 +42,5 @@ export default function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // excludes api, _next, _vercel, admin, and files (so /admin stays clean)
   matcher: ["/((?!api|_next|_vercel|admin|.*\\..*).*)"],
 };
