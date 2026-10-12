@@ -168,7 +168,7 @@ export function WebsiteBuilder({ siteType, onBack, onSubmit, submitting }: {
           </div>
 
           <p className="text-xs text-slate-400 mb-3">
-            {locale === 'fr' ? '💡 Glissez une carte vers le panier ou cliquez sur +' : locale === 'ar' ? '💡 اسحب البطاقة إلى السلة أو اضغط +' : '💡 Drag a card to the cart or click +'}
+            {locale === 'fr' ? '💡 Ajoutez ce dont vous avez besoin — les prix s\u2019affichent dans le panier' : locale === 'ar' ? '💡 أضف ما تحتاجه — تظهر الأسعار في السلة' : '💡 Add what you need — prices appear in the cart'}
           </p>
 
           {/* feature cards */}
@@ -201,7 +201,7 @@ export function WebsiteBuilder({ siteType, onBack, onSubmit, submitting }: {
                       <Clock className="w-3 h-3" />{f.timeDays}j
                     </span>
                   )}
-                  <span className="font-bold text-blue-600 text-sm flex-shrink-0">{f.price}</span>
+
                   <button onClick={(e) => { e.stopPropagation(); add(f); }} disabled={!!isSelected}
                     className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 transition-colors flex-shrink-0 disabled:opacity-40">
                     {isSelected ? <Check className="w-3.5 h-3.5" /> : <span className="text-lg leading-none">+</span>}
